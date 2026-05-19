@@ -37,16 +37,40 @@ fi
 
 # ── Install tools commonly needed in codespaces ──
 
-# Install neovim if not present
-if ! command -v nvim &>/dev/null; then
-  echo "  Installing neovim..."
+# ── Install neovim (0.10+ required for NvChad / vim.uv) ──
+install_neovim() {
+  local NVIM_VERSION="v0.10.4"
+  local current=""
+
+  if command -v nvim &>/dev/null; then
+    current=$(nvim --version | head -1 | grep -oE '[0-9]+\.[0-9]+')
+    if [ "$(echo "$current" | awk -F. '{print ($1 * 100) + $2}')" -ge 1000 ]; then
+      echo "  Neovim $current already installed (>= 0.10)"
+      return
+    fi
+    echo "  Neovim $current is too old, upgrading..."
+  else
+    echo "  Installing neovim..."
+  fi
+
   if command -v apt-get &>/dev/null; then
-    sudo apt-get update -qq && sudo apt-get install -y -qq neovim >/dev/null 2>&1
+    # AppImage is the reliable way to get a modern version on Debian/Ubuntu
+    curl -sLo /tmp/nvim.appimage "https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux-x86_64.appimage"
+    chmod +x /tmp/nvim.appimage
+    # Extract since FUSE isn't available in containers
+    cd /tmp && ./nvim.appimage --appimage-extract >/dev/null 2>&1
+    sudo mv /tmp/squashfs-root /opt/nvim
+    sudo ln -sf /opt/nvim/usr/bin/nvim /usr/local/bin/nvim
+    rm -f /tmp/nvim.appimage
+    cd - >/dev/null
   elif command -v brew &>/dev/null; then
     brew install neovim --quiet
   fi
-  echo "  Installed neovim"
-fi
+
+  echo "  Installed neovim $(nvim --version | head -1)"
+}
+
+install_neovim
 
 # Set default shell to zsh if available
 if command -v zsh &>/dev/null; then
