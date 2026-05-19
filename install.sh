@@ -39,35 +39,34 @@ fi
 
 # ── Install neovim (0.10+ required for NvChad / vim.uv) ──
 install_neovim() {
-  local NVIM_VERSION="v0.10.4"
+  local NVIM_TAG="v0.11.0"
   local current=""
 
   if command -v nvim &>/dev/null; then
     current=$(nvim --version | head -1 | grep -oE '[0-9]+\.[0-9]+')
-    if [ "$(echo "$current" | awk -F. '{print ($1 * 100) + $2}')" -ge 1000 ]; then
-      echo "  Neovim $current already installed (>= 0.10)"
+    if [ "$(echo "$current" | awk -F. '{print ($1 * 100) + $2}')" -ge 1100 ]; then
+      echo "  Neovim $current already installed (>= 0.11)"
       return
     fi
-    echo "  Neovim $current is too old, upgrading..."
+    echo "  Neovim $current is too old, building from source..."
   else
-    echo "  Installing neovim..."
+    echo "  Installing neovim from source..."
   fi
 
   if command -v apt-get &>/dev/null; then
-    # AppImage is the reliable way to get a modern version on Debian/Ubuntu
-    curl -sLo /tmp/nvim.appimage "https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux-x86_64.appimage"
-    chmod +x /tmp/nvim.appimage
-    # Extract since FUSE isn't available in containers
-    cd /tmp && ./nvim.appimage --appimage-extract >/dev/null 2>&1
-    sudo mv /tmp/squashfs-root /opt/nvim
-    sudo ln -sf /opt/nvim/usr/bin/nvim /usr/local/bin/nvim
-    rm -f /tmp/nvim.appimage
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq ninja-build gettext cmake unzip curl build-essential >/dev/null 2>&1
+    git clone --depth 1 --branch "$NVIM_TAG" https://github.com/neovim/neovim.git /tmp/neovim-build
+    cd /tmp/neovim-build
+    make CMAKE_BUILD_TYPE=Release -j"$(nproc)" >/dev/null 2>&1
+    sudo make install >/dev/null 2>&1
     cd - >/dev/null
+    rm -rf /tmp/neovim-build
   elif command -v brew &>/dev/null; then
     brew install neovim --quiet
   fi
 
-  echo "  Installed neovim $(nvim --version | head -1)"
+  echo "  Installed $(nvim --version | head -1)"
 }
 
 install_neovim
