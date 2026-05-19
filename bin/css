@@ -1,0 +1,96 @@
+#!/bin/bash
+# css — Codespace SSH helper
+# Usage: css <repo>        (e.g. css github/github)
+#        css               (lists all codespaces to pick from)
+#
+# Finds existing codespaces for a repo, prompts if multiple,
+# creates one if none exist, then SSHs in.
+
+set -e
+
+REPO="$1"
+
+ssh_into() {
+  local name="$1"
+  local state="$2"
+
+  if [ "$state" != "Available" ]; then
+    echo "⏳ Starting codespace..."
+    gh codespace start -c "$name" 2>/dev/null || true
+  fi
+
+  echo "🔗 Connecting to $name..."
+  gh codespace ssh -c "$name"
+}
+
+# No repo arg — list all codespaces and pick
+if [ -z "$REPO" ]; then
+  echo "No repo specified. Listing all codespaces..."
+  echo ""
+  gh codespace list --json name,repository,state,displayName \
+    --jq '.[] | "\(.name)\t\(.repository)\t\(.state)\t\(.displayName)"' | \
+    column -t -s $'\t' | nl -ba
+  echo ""
+  read -rp "Pick a number (or q to quit): " choice
+  [ "$choice" = "q" ] && exit 0
+
+  selected=$(gh codespace list --json name,state \
+    --jq '.['"$((choice-1))"'] | "\(.name) \(.state)"')
+  name=$(echo "$selected" | awk '{print $1}')
+  state=$(echo "$selected" | awk '{print $2}')
+
+  if [ -z "$name" ]; then
+    echo "❌ Invalid selection"
+    exit 1
+  fi
+
+  ssh_into "$name" "$state"
+  exit 0
+fi
+
+# Repo specified — find matching codespaces
+codespaces=$(gh codespace list --repo "$REPO" --json name,state,displayName 2>/dev/null)
+count=$(echo "$codespaces" | jq 'length')
+
+if [ "$count" -eq 0 ]; then
+  # None exist — create one
+  echo "🆕 No codespaces found for $REPO. Creating one..."
+  gh codespace create --repo "$REPO" --status
+  
+  # Get the newly created codespace
+  name=$(gh codespace list --repo "$REPO" --json name --jq '.[0].name')
+  ssh_into "$name" "Available"
+
+elif [ "$count" -eq 1 ]; then
+  # Exactly one — connect directly
+  name=$(echo "$codespaces" | jq -r '.[0].name')
+  state=$(echo "$codespaces" | jq -r '.[0].state')
+  ssh_into "$name" "$state"
+
+else
+  # Multiple — prompt to pick
+  echo "Found $count codespaces for $REPO:"
+  echo ""
+  echo "$codespaces" | jq -r '.[] | "\(.name)\t\(.state)\t\(.displayName)"' | \
+    column -t -s $'\t' | nl -ba
+  echo ""
+  read -rp "Pick a number (or c to create new, q to quit): " choice
+  [ "$choice" = "q" ] && exit 0
+
+  if [ "$choice" = "c" ]; then
+    echo "🆕 Creating new codespace for $REPO..."
+    gh codespace create --repo "$REPO" --status
+    name=$(gh codespace list --repo "$REPO" --json name,createdAt --jq 'sort_by(.createdAt) | last | .name')
+    ssh_into "$name" "Available"
+  else
+    name=$(echo "$codespaces" | jq -r '.['"$((choice-1))"'].name')
+    state=$(echo "$codespaces" | jq -r '.['"$((choice-1))"'].state')
+
+    if [ -z "$name" ] || [ "$name" = "null" ]; then
+      echo "❌ Invalid selection"
+      exit 1
+    fi
+
+    ssh_into "$name" "$state"
+  fi
+fi

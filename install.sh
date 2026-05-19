@@ -65,3 +65,12 @@ if [ "$CODESPACES" = "true" ]; then
 fi
 
 echo "✅ Dotfiles installed!"
+
+# ── Custom scripts ──
+if [ -d "$DOTFILES_DIR/bin" ]; then
+  mkdir -p "$HOME/bin"
+  for script in "$DOTFILES_DIR/bin/"*; do
+    ln -sf "$script" "$HOME/bin/$(basename "$script")"
+    echo "  Linked bin/$(basename "$script")"
+  done
+fi
