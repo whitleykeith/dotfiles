@@ -10,18 +10,26 @@ Personal configuration files.
 - `.bash_profile` — Bash profile
 - `.vimrc` — Vim configuration
 - `.config/nvim/` — Neovim configuration (NvChad v2.5 based)
+- `install.sh` — Automated setup script (used by Codespaces)
 
-## Setup
+## GitHub Codespaces
+
+This repo is set up for automatic personalization in [GitHub Codespaces](https://docs.github.com/en/codespaces/setting-your-user-preferences/personalizing-github-codespaces-for-your-account#dotfiles).
+
+1. Go to [github.com/settings/codespaces](https://github.com/settings/codespaces)
+2. Enable **"Automatically install dotfiles"**
+3. Select `whitleykeith/dotfiles` as the repo
+
+When a codespace starts, `install.sh` runs automatically and:
+- Symlinks shell configs (`.zshrc`, `.gitconfig`, etc.) into `$HOME`
+- Symlinks the nvim config into `~/.config/nvim`
+- Installs neovim if not present
+- Sets zsh as the default shell
+- Configures git credential helper for Codespaces
+
+## Manual Setup
 
 ```bash
-# Clone
 git clone git@github.com:whitleykeith/dotfiles.git ~/dotfiles
-
-# Symlink what you need
-ln -sf ~/dotfiles/.gitconfig ~/.gitconfig
-ln -sf ~/dotfiles/.zshrc ~/.zshrc
-ln -sf ~/dotfiles/.vimrc ~/.vimrc
-ln -sf ~/dotfiles/.config/nvim ~/.config/nvim
+cd ~/dotfiles && ./install.sh
 ```
-
-> **Note:** Some values are placeholder-scrubbed (e.g., `<YOUR_EMAIL>`). Update them for your environment.
