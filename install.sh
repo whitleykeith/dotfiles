@@ -39,7 +39,7 @@ fi
 
 # ── Install neovim (0.10+ required for NvChad / vim.uv) ──
 install_neovim() {
-  local NVIM_TAG="v0.11.0"
+  local NVIM_VERSION="v0.11.0"
 
   if command -v nvim &>/dev/null; then
     local major minor
@@ -49,29 +49,16 @@ install_neovim() {
       echo "  Neovim ${major}.${minor} already installed (>= 0.11)"
       return
     fi
-    echo "  Neovim ${major}.${minor} is too old, removing and building from source..."
-    # Remove the old version so it doesn't shadow the new one
+    echo "  Neovim ${major}.${minor} is too old, upgrading..."
     sudo rm -f "$(which nvim)"
-  else
-    echo "  Installing neovim from source..."
-  fi
-
-  if command -v apt-get &>/dev/null; then
-    # Remove apt-installed neovim if present
     sudo apt-get remove -y neovim neovim-runtime 2>/dev/null || true
-    sudo apt-get update -qq
-    sudo apt-get install -y -qq ninja-build gettext cmake unzip curl build-essential >/dev/null 2>&1
-    git clone --depth 1 --branch "$NVIM_TAG" https://github.com/neovim/neovim.git /tmp/neovim-build
-    cd /tmp/neovim-build
-    make CMAKE_BUILD_TYPE=Release -j"$(nproc)" >/dev/null 2>&1
-    sudo make install >/dev/null 2>&1
-    cd - >/dev/null
-    rm -rf /tmp/neovim-build
-  elif command -v brew &>/dev/null; then
-    brew install neovim --quiet
+  else
+    echo "  Installing neovim..."
   fi
 
-  # Verify
+  # Prebuilt tarball — fast, no build deps needed
+  curl -sL "https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux-x86_64.tar.gz" | sudo tar xz -C /opt
+  sudo ln -sf /opt/nvim-linux-x86_64/bin/nvim /usr/local/bin/nvim
   echo "  Installed $(nvim --version | head -1)"
 }
 
