@@ -1,96 +1,213 @@
 #!/bin/bash
-# css — Codespace SSH helper
-# Usage: css <repo>        (e.g. css github/github)
-#        css               (lists all codespaces to pick from)
-#
-# Finds existing codespaces for a repo, prompts if multiple,
-# creates one if none exist, then SSHs in.
+# css — Codespace manager
+# Usage:
+#   css                     List all codespaces, pick one to SSH into
+#   css <repo>              SSH into codespace for repo (creates if none exist)
+#   css ls                  List all codespaces
+#   css rm [repo]           Delete a codespace (prompts to pick)
+#   css rebuild [repo]      Rebuild a codespace (full rebuild)
+#   css stop [repo]         Stop a running codespace
+#   css start [repo]        Start a stopped codespace
+#   css create <repo>       Create a new codespace
+#   css logs [repo]         View creation logs for a codespace
+#   css web [repo]          Open a codespace in VS Code web
 
 set -e
 
-REPO="$1"
+CMD="$1"
+ARG="$2"
+
+# ── Helpers ──
+
+list_codespaces() {
+  local repo_filter="$1"
+  local args=(--json name,repository,state,displayName,createdAt)
+  [ -n "$repo_filter" ] && args+=(--repo "$repo_filter")
+  gh codespace list "${args[@]}" \
+    --jq '.[] | "\(.name)\t\(.repository)\t\(.state)\t\(.displayName)"' | \
+    column -t -s $'\t' | nl -ba
+}
+
+pick_codespace() {
+  local repo_filter="$1"
+  local prompt="${2:-Pick a number (or q to quit): }"
+  local args=(--json name,state)
+  [ -n "$repo_filter" ] && args+=(--repo "$repo_filter")
+
+  local data
+  data=$(gh codespace list "${args[@]}")
+  local count
+  count=$(echo "$data" | jq 'length')
+
+  if [ "$count" -eq 0 ]; then
+    echo "No codespaces found."
+    return 1
+  fi
+
+  list_codespaces "$repo_filter"
+  echo ""
+  read -rp "$prompt" choice
+  [ "$choice" = "q" ] && exit 0
+
+  local idx=$((choice - 1))
+  CS_NAME=$(echo "$data" | jq -r ".[$idx].name")
+  CS_STATE=$(echo "$data" | jq -r ".[$idx].state")
+
+  if [ -z "$CS_NAME" ] || [ "$CS_NAME" = "null" ]; then
+    echo "❌ Invalid selection"
+    return 1
+  fi
+}
 
 ssh_into() {
-  local name="$1"
-  local state="$2"
-
+  local name="$1" state="$2"
   if [ "$state" != "Available" ]; then
     echo "⏳ Starting codespace..."
     gh codespace start -c "$name" 2>/dev/null || true
   fi
-
   echo "🔗 Connecting to $name..."
   gh codespace ssh -c "$name"
 }
 
-# No repo arg — list all codespaces and pick
-if [ -z "$REPO" ]; then
-  echo "No repo specified. Listing all codespaces..."
-  echo ""
-  gh codespace list --json name,repository,state,displayName \
-    --jq '.[] | "\(.name)\t\(.repository)\t\(.state)\t\(.displayName)"' | \
-    column -t -s $'\t' | nl -ba
-  echo ""
-  read -rp "Pick a number (or q to quit): " choice
-  [ "$choice" = "q" ] && exit 0
+# ── Commands ──
 
-  selected=$(gh codespace list --json name,state \
-    --jq '.['"$((choice-1))"'] | "\(.name) \(.state)"')
-  name=$(echo "$selected" | awk '{print $1}')
-  state=$(echo "$selected" | awk '{print $2}')
+cmd_ls() {
+  echo "Your codespaces:"
+  echo ""
+  list_codespaces "$ARG"
+}
 
-  if [ -z "$name" ]; then
-    echo "❌ Invalid selection"
-    exit 1
+cmd_rm() {
+  echo "Select codespace to delete:"
+  pick_codespace "$ARG" "Pick a number to delete (or q to quit): " || exit 1
+  echo ""
+  read -rp "⚠️  Delete $CS_NAME? (y/n): " confirm
+  [ "$confirm" = "y" ] || exit 0
+  gh codespace delete -c "$CS_NAME" -f
+  echo "🗑️  Deleted $CS_NAME"
+}
+
+cmd_rebuild() {
+  echo "Select codespace to rebuild:"
+  pick_codespace "$ARG" "Pick a number to rebuild (or q to quit): " || exit 1
+  echo ""
+  read -rp "⚠️  Full rebuild $CS_NAME? This destroys and recreates the container. (y/n): " confirm
+  [ "$confirm" = "y" ] || exit 0
+  gh codespace rebuild -c "$CS_NAME" --full
+  echo "🔨 Rebuild started for $CS_NAME"
+}
+
+cmd_stop() {
+  echo "Select codespace to stop:"
+  pick_codespace "$ARG" "Pick a number to stop (or q to quit): " || exit 1
+  gh codespace stop -c "$CS_NAME"
+  echo "⏹️  Stopped $CS_NAME"
+}
+
+cmd_start() {
+  echo "Select codespace to start:"
+  pick_codespace "$ARG" "Pick a number to start (or q to quit): " || exit 1
+  gh codespace start -c "$CS_NAME"
+  echo "▶️  Started $CS_NAME"
+}
+
+cmd_create() {
+  local repo="${ARG:-$1}"
+  if [ -z "$repo" ]; then
+    read -rp "Repo (e.g. github/github): " repo
+  fi
+  echo "🆕 Creating codespace for $repo..."
+  gh codespace create --repo "$repo" --status
+  echo "✅ Created. Run 'css $repo' to SSH in."
+}
+
+cmd_logs() {
+  echo "Select codespace to view logs:"
+  pick_codespace "$ARG" "Pick a number (or q to quit): " || exit 1
+  gh codespace logs -c "$CS_NAME"
+}
+
+cmd_web() {
+  echo "Select codespace to open in browser:"
+  pick_codespace "$ARG" "Pick a number (or q to quit): " || exit 1
+  gh codespace code -c "$CS_NAME" --web
+  echo "🌐 Opened $CS_NAME in browser"
+}
+
+cmd_ssh() {
+  local repo="$1"
+
+  # No repo — list all and pick
+  if [ -z "$repo" ]; then
+    echo "No repo specified. Listing all codespaces..."
+    echo ""
+    pick_codespace "" "Pick a number (or q to quit): " || exit 1
+    ssh_into "$CS_NAME" "$CS_STATE"
+    return
   fi
 
-  ssh_into "$name" "$state"
-  exit 0
-fi
+  # Repo specified — find matching
+  local data
+  data=$(gh codespace list --repo "$repo" --json name,state,displayName 2>/dev/null)
+  local count
+  count=$(echo "$data" | jq 'length')
 
-# Repo specified — find matching codespaces
-codespaces=$(gh codespace list --repo "$REPO" --json name,state,displayName 2>/dev/null)
-count=$(echo "$codespaces" | jq 'length')
-
-if [ "$count" -eq 0 ]; then
-  # None exist — create one
-  echo "🆕 No codespaces found for $REPO. Creating one..."
-  gh codespace create --repo "$REPO" --status
-  
-  # Get the newly created codespace
-  name=$(gh codespace list --repo "$REPO" --json name --jq '.[0].name')
-  ssh_into "$name" "Available"
-
-elif [ "$count" -eq 1 ]; then
-  # Exactly one — connect directly
-  name=$(echo "$codespaces" | jq -r '.[0].name')
-  state=$(echo "$codespaces" | jq -r '.[0].state')
-  ssh_into "$name" "$state"
-
-else
-  # Multiple — prompt to pick
-  echo "Found $count codespaces for $REPO:"
-  echo ""
-  echo "$codespaces" | jq -r '.[] | "\(.name)\t\(.state)\t\(.displayName)"' | \
-    column -t -s $'\t' | nl -ba
-  echo ""
-  read -rp "Pick a number (or c to create new, q to quit): " choice
-  [ "$choice" = "q" ] && exit 0
-
-  if [ "$choice" = "c" ]; then
-    echo "🆕 Creating new codespace for $REPO..."
-    gh codespace create --repo "$REPO" --status
-    name=$(gh codespace list --repo "$REPO" --json name,createdAt --jq 'sort_by(.createdAt) | last | .name')
+  if [ "$count" -eq 0 ]; then
+    echo "🆕 No codespaces found for $repo. Creating one..."
+    gh codespace create --repo "$repo" --status
+    local name
+    name=$(gh codespace list --repo "$repo" --json name --jq '.[0].name')
     ssh_into "$name" "Available"
+
+  elif [ "$count" -eq 1 ]; then
+    ssh_into "$(echo "$data" | jq -r '.[0].name')" "$(echo "$data" | jq -r '.[0].state')"
+
   else
-    name=$(echo "$codespaces" | jq -r '.['"$((choice-1))"'].name')
-    state=$(echo "$codespaces" | jq -r '.['"$((choice-1))"'].state')
-
-    if [ -z "$name" ] || [ "$name" = "null" ]; then
-      echo "❌ Invalid selection"
-      exit 1
+    echo "Found $count codespaces for $repo:"
+    echo ""
+    echo "$data" | jq -r '.[] | "\(.name)\t\(.state)\t\(.displayName)"' | \
+      column -t -s $'\t' | nl -ba
+    echo ""
+    read -rp "Pick a number (c=create new, q=quit): " choice
+    [ "$choice" = "q" ] && exit 0
+    if [ "$choice" = "c" ]; then
+      cmd_create "$repo"
+    else
+      local idx=$((choice - 1))
+      local name state
+      name=$(echo "$data" | jq -r ".[$idx].name")
+      state=$(echo "$data" | jq -r ".[$idx].state")
+      [ -z "$name" ] || [ "$name" = "null" ] && echo "❌ Invalid selection" && exit 1
+      ssh_into "$name" "$state"
     fi
-
-    ssh_into "$name" "$state"
   fi
-fi
+}
+
+# ── Dispatch ──
+
+case "$CMD" in
+  ls|list)     cmd_ls ;;
+  rm|delete)   cmd_rm ;;
+  rebuild)     cmd_rebuild ;;
+  stop)        cmd_stop ;;
+  start)       cmd_start ;;
+  create|new)  cmd_create ;;
+  logs)        cmd_logs ;;
+  web)         cmd_web ;;
+  help|-h|--help)
+    echo "css — Codespace manager"
+    echo ""
+    echo "Usage:"
+    echo "  css                     SSH into a codespace (list all, pick one)"
+    echo "  css <repo>              SSH into codespace for repo (auto-create)"
+    echo "  css ls [repo]           List codespaces"
+    echo "  css rm [repo]           Delete a codespace"
+    echo "  css rebuild [repo]      Full rebuild a codespace"
+    echo "  css stop [repo]         Stop a codespace"
+    echo "  css start [repo]        Start a codespace"
+    echo "  css create <repo>       Create a new codespace"
+    echo "  css logs [repo]         View creation logs"
+    echo "  css web [repo]          Open in VS Code web"
+    ;;
+  *)           cmd_ssh "$CMD" ;;
+esac
