@@ -40,20 +40,25 @@ fi
 # ── Install neovim (0.10+ required for NvChad / vim.uv) ──
 install_neovim() {
   local NVIM_TAG="v0.11.0"
-  local current=""
 
   if command -v nvim &>/dev/null; then
-    current=$(nvim --version | head -1 | grep -oE '[0-9]+\.[0-9]+')
-    if [ "$(echo "$current" | awk -F. '{print ($1 * 100) + $2}')" -ge 1100 ]; then
-      echo "  Neovim $current already installed (>= 0.11)"
+    local major minor
+    major=$(nvim --version | head -1 | grep -oE '[0-9]+\.[0-9]+' | cut -d. -f1)
+    minor=$(nvim --version | head -1 | grep -oE '[0-9]+\.[0-9]+' | cut -d. -f2)
+    if [ "$major" -ge 1 ] || { [ "$major" -eq 0 ] && [ "$minor" -ge 11 ]; }; then
+      echo "  Neovim ${major}.${minor} already installed (>= 0.11)"
       return
     fi
-    echo "  Neovim $current is too old, building from source..."
+    echo "  Neovim ${major}.${minor} is too old, removing and building from source..."
+    # Remove the old version so it doesn't shadow the new one
+    sudo rm -f "$(which nvim)"
   else
     echo "  Installing neovim from source..."
   fi
 
   if command -v apt-get &>/dev/null; then
+    # Remove apt-installed neovim if present
+    sudo apt-get remove -y neovim neovim-runtime 2>/dev/null || true
     sudo apt-get update -qq
     sudo apt-get install -y -qq ninja-build gettext cmake unzip curl build-essential >/dev/null 2>&1
     git clone --depth 1 --branch "$NVIM_TAG" https://github.com/neovim/neovim.git /tmp/neovim-build
@@ -66,6 +71,7 @@ install_neovim() {
     brew install neovim --quiet
   fi
 
+  # Verify
   echo "  Installed $(nvim --version | head -1)"
 }
 
