@@ -15,3 +15,7 @@ M.ui = {
 }
 
 return M
+
+-- Global vim options
+vim.opt.backspace = "indent,eol,start"
+vim.opt.equalalways = false

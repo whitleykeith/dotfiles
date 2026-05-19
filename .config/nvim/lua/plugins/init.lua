@@ -1,5 +1,65 @@
 return {
   {
+    "nvim-tree/nvim-tree.lua",
+    config = function()
+      local api = require("nvim-tree.api")
+      local nvchad_opts = require("nvchad.configs.nvimtree")
+
+      nvchad_opts.view.width = 35
+      nvchad_opts.actions = {
+        open_file = {
+          quit_on_open = false,
+          resize_window = false,
+          window_picker = { enable = true },
+        },
+      }
+
+      local preview_buf, preview_win
+      local function close_preview()
+        if preview_win and vim.api.nvim_win_is_valid(preview_win) then
+          vim.api.nvim_win_close(preview_win, true)
+        end
+        if preview_buf and vim.api.nvim_buf_is_valid(preview_buf) then
+          vim.api.nvim_buf_delete(preview_buf, { force = true })
+        end
+        preview_buf, preview_win = nil, nil
+      end
+
+      local function preview_file()
+        local node = api.tree.get_node_under_cursor()
+        if not node or node.nodes then return end
+        close_preview()
+        local filepath = node.absolute_path
+        local lines = vim.fn.readfile(filepath, "", 200)
+        preview_buf = vim.api.nvim_create_buf(false, true)
+        vim.api.nvim_buf_set_lines(preview_buf, 0, -1, false, lines)
+        local ft = vim.filetype.match({ filename = filepath }) or ""
+        if ft ~= "" then vim.bo[preview_buf].filetype = ft end
+        vim.bo[preview_buf].modifiable = false
+        local tree_width = vim.api.nvim_win_get_width(0)
+        local width = math.floor(vim.o.columns * 0.5)
+        local height = math.floor(vim.o.lines * 0.7)
+        preview_win = vim.api.nvim_open_win(preview_buf, false, {
+          relative = "editor",
+          width = width,
+          height = height,
+          col = tree_width + 1,
+          row = 2,
+          style = "minimal",
+          border = "rounded",
+        })
+      end
+
+      nvchad_opts.on_attach = function(bufnr)
+        api.config.mappings.default_on_attach(bufnr)
+        vim.keymap.set("n", "<Tab>", preview_file, { buffer = bufnr, desc = "Preview file (float)" })
+        vim.keymap.set("n", "q", close_preview, { buffer = bufnr, desc = "Close preview" })
+      end
+
+      require("nvim-tree").setup(nvchad_opts)
+    end,
+  },
+  {
     "stevearc/conform.nvim",
     -- event = 'BufWritePre', -- uncomment for format on save
     opts = require "configs.conform",
@@ -108,6 +168,72 @@ return {
     keys = {
       { "<leader>wm", "<cmd>WinShift<cr>", desc = "Win shift mode" },
       { "<leader>ws", "<cmd>WinShift swap<cr>", desc = "Win shift swap" },
+    },
+  },
+  {
+    "hrsh7th/nvim-cmp",
+    opts = function(_, opts)
+      local cmp = require("cmp")
+      -- Remove Tab/S-Tab from cmp — let Copilot own Tab
+      opts.mapping["<Tab>"] = nil
+      opts.mapping["<S-Tab>"] = nil
+      -- Use C-n/C-p for cmp cycling instead
+      opts.mapping["<C-n>"] = cmp.mapping.select_next_item()
+      opts.mapping["<C-p>"] = cmp.mapping.select_prev_item()
+    end,
+  },
+  {
+    "github/copilot.vim",
+    event = "InsertEnter",
+    config = function()
+      vim.g.copilot_no_tab_map = true
+      vim.keymap.set("i", "<Tab>", function()
+        if vim.fn["copilot#GetDisplayedSuggestion"]().text ~= "" then
+          return vim.fn["copilot#Accept"]("")
+        else
+          return vim.api.nvim_replace_termcodes("<Tab>", true, false, true)
+        end
+      end, { expr = true, silent = true, replace_keycodes = false })
+      vim.keymap.set("i", "<C-]>", "<Plug>(copilot-next)", { silent = true })
+      vim.keymap.set("i", "<C-\\>", "<Plug>(copilot-dismiss)", { silent = true })
+    end,
+  },
+  {
+    "Pocco81/auto-save.nvim",
+    event = { "InsertLeave", "TextChanged" },
+    opts = {
+      debounce_delay = 2000,
+      condition = function(buf)
+        -- Skip special buffers, nvim-tree, help, etc.
+        local buftype = vim.fn.getbufvar(buf, "&buftype")
+        local filetype = vim.fn.getbufvar(buf, "&filetype")
+        if buftype ~= "" then return false end
+        if vim.tbl_contains({ "NvimTree", "oil", "harpoon", "octo" }, filetype) then return false end
+        return true
+      end,
+    },
+    keys = {
+      { "<leader>ta", "<cmd>ASToggle<cr>", desc = "Toggle auto-save" },
+    },
+  },
+  {
+    "CopilotC-Nvim/CopilotChat.nvim",
+    dependencies = { "github/copilot.vim", "nvim-lua/plenary.nvim" },
+    cmd = { "CopilotChat", "CopilotChatOpen", "CopilotChatToggle" },
+    opts = {
+      model = "claude-opus-4.6-1m",
+      agent = "copilot",
+      window = {
+        layout = "vertical",
+        width = 0.3,
+      },
+    },
+    keys = {
+      { "<leader>cc", "<cmd>CopilotChatToggle<cr>", desc = "Copilot Chat toggle" },
+      { "<leader>ce", "<cmd>CopilotChatExplain<cr>", mode = "v", desc = "Copilot explain selection" },
+      { "<leader>cf", "<cmd>CopilotChatFix<cr>", mode = "v", desc = "Copilot fix selection" },
+      { "<leader>cr", "<cmd>CopilotChatReview<cr>", mode = "v", desc = "Copilot review selection" },
+      { "<leader>ct", "<cmd>CopilotChatTests<cr>", mode = "v", desc = "Copilot generate tests" },
     },
   },
 }

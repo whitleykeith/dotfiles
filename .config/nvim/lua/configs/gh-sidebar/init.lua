@@ -5,6 +5,7 @@ local win = nil
 local items = {}
 local username = nil
 local loading = false
+local last_results = nil
 
 local config = {
   width = math.floor(vim.o.columns * 0.20),
@@ -50,18 +51,47 @@ local function fetch_data(callback)
     end
   end
 
-  -- My open PRs
+  -- My open PRs (search first, then enrich with last commit date)
   run_gh(
-    'search prs --author=' .. user .. ' --state=open --owner=github --limit=20 --json url,title,repository,updatedAt,isDraft',
+    'search prs --author=' .. user .. ' --state=open --owner=github --limit=20 --json url,title,repository,updatedAt,isDraft,commentsCount',
     function(data)
       results.prs = data or {}
-      check_done()
+      if #results.prs == 0 then
+        check_done()
+        return
+      end
+      -- Enrich each PR with last commit date via GraphQL
+      local enrich_pending = #results.prs
+      for _, pr in ipairs(results.prs) do
+        local owner, repo, num = pr.url:match("github%.com/([^/]+)/([^/]+)/pull/(%d+)")
+        if owner and repo and num then
+          run_gh(
+            'api graphql -f query=\'{ repository(owner: "' .. owner .. '", name: "' .. repo .. '") { pullRequest(number: ' .. num .. ') { commits(last: 1) { nodes { commit { committedDate } } } } } }\' --jq \'.data.repository.pullRequest.commits.nodes[0].commit.committedDate\' 2>/dev/null',
+            function(commit_data)
+              if type(commit_data) == "string" then
+                pr.lastCommitDate = vim.trim(commit_data)
+              elseif type(commit_data) == "table" and #commit_data > 0 then
+                pr.lastCommitDate = vim.trim(commit_data[1] or "")
+              end
+              enrich_pending = enrich_pending - 1
+              if enrich_pending == 0 then
+                check_done()
+              end
+            end
+          )
+        else
+          enrich_pending = enrich_pending - 1
+          if enrich_pending == 0 then
+            check_done()
+          end
+        end
+      end
     end
   )
 
   -- Assigned issues
   run_gh(
-    'search issues --assignee=' .. user .. ' --state=open --owner=github --limit=30 --json url,title,repository,updatedAt',
+    'search issues --assignee=' .. user .. ' --state=open --owner=github --limit=30 --json url,title,repository,updatedAt,commentsCount',
     function(data)
       -- Split into active and stale (not updated in 30 days)
       local now = os.time()
@@ -113,14 +143,53 @@ local function repo_short(repo)
   return (repo:gsub("^github/", ""))
 end
 
+local function time_ago(iso_date)
+  if not iso_date or iso_date == "" then return "" end
+  local y, m, d, h, min = iso_date:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+)")
+  if not y then
+    y, m, d = iso_date:match("(%d+)-(%d+)-(%d+)")
+    h, min = 0, 0
+  end
+  if not y then return "" end
+  local t = os.time({ year = tonumber(y), month = tonumber(m), day = tonumber(d), hour = tonumber(h) or 0, min = tonumber(min) or 0, sec = 0 })
+  local diff = os.time() - t
+  if diff < 3600 then return math.floor(diff / 60) .. "m"
+  elseif diff < 86400 then return math.floor(diff / 3600) .. "h"
+  elseif diff < 604800 then return math.floor(diff / 86400) .. "d"
+  elseif diff < 2592000 then return math.floor(diff / 604800) .. "w"
+  else return math.floor(diff / 2592000) .. "mo"
+  end
+end
+
+local function review_icon(decision)
+  if decision == "APPROVED" then return "✓"
+  elseif decision == "CHANGES_REQUESTED" then return "✗"
+  elseif decision == "REVIEW_REQUIRED" then return "◎"
+  else return "·"
+  end
+end
+
+local function diff_stat(pr)
+  local add = pr.additions or 0
+  local del = pr.deletions or 0
+  if add == 0 and del == 0 then return "" end
+  return " +" .. add .. "/-" .. del
+end
+
 local function render(results)
   items = {}
   local lines = {}
   local highlights = {}
 
+  -- Use actual window width for content sizing
+  local w = config.width
+  if win and vim.api.nvim_win_is_valid(win) then
+    w = vim.api.nvim_win_get_width(win)
+  end
+
   -- Header
   table.insert(lines, "  GitHub — " .. get_username())
-  table.insert(lines, "  " .. string.rep("─", config.width - 4))
+  table.insert(lines, "  " .. string.rep("─", math.max(w - 4, 10)))
   table.insert(items, { type = "header" })
   table.insert(items, { type = "header" })
 
@@ -140,9 +209,19 @@ local function render(results)
     for _, pr in ipairs(results.prs) do
       local repo = repo_short(pr.repository)
       local icon = pr.isDraft and "◌ " or "● "
-      local line = "   " .. icon .. repo .. " — " .. (pr.title or ""):sub(1, config.width - #repo - 10)
-      table.insert(lines, line)
+      local rv = pr.isDraft and "◌" or "●"
+      local title_line = "   " .. rv .. " " .. repo .. " — " .. (pr.title or ""):sub(1, w - #repo - 10)
+      table.insert(lines, title_line)
       table.insert(items, { type = "pr", url = pr.url })
+      -- Metadata line: last commit time + comments
+      local commit_time = pr.lastCommitDate and pr.lastCommitDate ~= "" and pr.lastCommitDate or pr.updatedAt
+      local ago = time_ago(commit_time)
+      local ago_label = pr.lastCommitDate and pr.lastCommitDate ~= "" and ("⏱ " .. ago) or (ago)
+      local comments = (pr.commentsCount or 0) > 0 and (" 💬" .. pr.commentsCount) or ""
+      local meta = "      " .. ago_label .. comments
+      table.insert(lines, meta)
+      table.insert(highlights, { line = #lines, col = 0, len = #meta, hl = "Comment" })
+      table.insert(items, { type = "pr_meta", url = pr.url })
     end
   end
 
@@ -161,9 +240,15 @@ local function render(results)
   else
     for _, issue in ipairs(results.issues) do
       local repo = repo_short(issue.repository)
-      local line = "     " .. repo .. " — " .. (issue.title or ""):sub(1, config.width - #repo - 10)
+      local line = "     " .. repo .. " — " .. (issue.title or ""):sub(1, w - #repo - 10)
       table.insert(lines, line)
       table.insert(items, { type = "issue", url = issue.url })
+      local ago = time_ago(issue.updatedAt)
+      local comments = (issue.commentsCount or 0) > 0 and (" 💬" .. issue.commentsCount) or ""
+      local meta = "      " .. ago .. comments
+      table.insert(lines, meta)
+      table.insert(highlights, { line = #lines, col = 0, len = #meta, hl = "Comment" })
+      table.insert(items, { type = "issue_meta", url = issue.url })
     end
   end
 
@@ -179,9 +264,14 @@ local function render(results)
 
     for _, issue in ipairs(results.stale_issues) do
       local repo = repo_short(issue.repository)
-      local line = "     " .. repo .. " — " .. (issue.title or ""):sub(1, config.width - #repo - 10)
+      local line = "     " .. repo .. " — " .. (issue.title or ""):sub(1, w - #repo - 10)
       table.insert(lines, line)
       table.insert(items, { type = "issue", url = issue.url })
+      local ago = time_ago(issue.updatedAt)
+      local meta = "      " .. ago .. " ago"
+      table.insert(lines, meta)
+      table.insert(highlights, { line = #lines, col = 0, len = #meta, hl = "Comment" })
+      table.insert(items, { type = "issue_meta", url = issue.url })
     end
   end
 
@@ -201,13 +291,20 @@ local function render(results)
     for _, notif in ipairs(results.mentions) do
       local repo = repo_short(notif.repo or "")
       local reason_icon = notif.reason == "review_requested" and "👀" or "💬"
-      local line = "   " .. reason_icon .. " " .. repo .. " — " .. (notif.title or ""):sub(1, config.width - #repo - 12)
+      local line = "   " .. reason_icon .. " " .. repo .. " — " .. (notif.title or ""):sub(1, w - #repo - 12)
       table.insert(lines, line)
       -- Convert API URL to web URL for Octo
       local web_url = (notif.url or "")
         :gsub("api%.github%.com/repos/", "github.com/")
         :gsub("/pulls/", "/pull/")
       table.insert(items, { type = "notification", url = web_url, api_url = notif.url })
+      local ago = time_ago(notif.updated_at)
+      if ago ~= "" then
+        local meta = "      " .. ago
+        table.insert(lines, meta)
+        table.insert(highlights, { line = #lines, col = 0, len = #meta, hl = "Comment" })
+        table.insert(items, { type = "notif_meta", url = web_url })
+      end
     end
   end
 
@@ -229,7 +326,7 @@ local function render(results)
       local author = (disc.author or {}).login or ""
       local is_mine = author == get_username()
       local icon = is_mine and "✎ " or "↩ "
-      local line = "   " .. icon .. repo .. " — " .. (disc.title or ""):sub(1, config.width - #repo - 10)
+      local line = "   " .. icon .. repo .. " — " .. (disc.title or ""):sub(1, w - #repo - 10)
       table.insert(lines, line)
       table.insert(items, { type = "discussion", url = disc.url })
     end
@@ -237,7 +334,7 @@ local function render(results)
 
   -- Footer
   table.insert(lines, "")
-  table.insert(lines, "  " .. string.rep("─", config.width - 4))
+  table.insert(lines, "  " .. string.rep("─", w - 4))
   table.insert(lines, "  r: refresh  q: close  <CR>: open")
   table.insert(items, { type = "spacer" })
   table.insert(items, { type = "footer" })
@@ -292,6 +389,7 @@ function M.refresh()
 
   fetch_data(function(results)
     vim.schedule(function()
+      last_results = results
       render(results)
       loading = false
     end)
@@ -325,7 +423,7 @@ function M.toggle()
   vim.api.nvim_win_set_option(win, "signcolumn", "no")
   vim.api.nvim_win_set_option(win, "wrap", false)
   vim.api.nvim_win_set_option(win, "cursorline", true)
-  vim.api.nvim_win_set_option(win, "winfixwidth", true)
+  vim.api.nvim_win_set_option(win, "winfixwidth", false)
 
   -- Restore equalalways but keep sidebar fixed
   vim.o.equalalways = ea
@@ -335,6 +433,16 @@ function M.toggle()
   vim.keymap.set("n", "q", M.toggle, opts)
   vim.keymap.set("n", "<CR>", open_item, opts)
   vim.keymap.set("n", "r", M.refresh, opts)
+
+  -- Re-render on resize so content fits new width
+  vim.api.nvim_create_autocmd("WinResized", {
+    buffer = buf,
+    callback = function()
+      if last_results then
+        render(last_results)
+      end
+    end,
+  })
 
   if config.refresh_on_open then
     M.refresh()

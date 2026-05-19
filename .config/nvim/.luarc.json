@@ -1,9 +1,9 @@
 {
     "workspace.library": [
-        "/opt/homebrew/Cellar/neovim/<VERSION>/share/nvim/runtime/lua",
-        "/opt/homebrew/Cellar/neovim/<VERSION>/share/nvim/runtime/lua/vim/lsp",
-        "<HOME>/.local/share/nvim/lazy/ui/nvchad_types",
-        "<HOME>/.local/share/nvim/lazy/lazy.nvim/lua/lazy",
+        "/opt/homebrew/Cellar/neovim/0.11.6/share/nvim/runtime/lua",
+        "/opt/homebrew/Cellar/neovim/0.11.6/share/nvim/runtime/lua/vim/lsp",
+        "/Users/whitleykeith/.local/share/nvim/lazy/ui/nvchad_types",
+        "/Users/whitleykeith/.local/share/nvim/lazy/lazy.nvim/lua/lazy",
         "${3rd}/luassert/library"
     ]
 }

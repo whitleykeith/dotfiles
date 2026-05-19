@@ -14,3 +14,11 @@ for _, lsp in ipairs(servers) do
   })
   vim.lsp.enable(lsp)
 end
+
+-- Kotlin LSP
+vim.lsp.config("kotlin_language_server", {
+  on_attach = nvlsp.on_attach,
+  on_init = nvlsp.on_init,
+  capabilities = nvlsp.capabilities,
+})
+vim.lsp.enable("kotlin_language_server")
