@@ -1,6 +1,15 @@
 local options = {
   formatters_by_ft = {
     lua = { "stylua" },
+    go = { "gofumpt", "goimports" },
+    ruby = { "rubocop" },
+    python = { "black", "isort" },
+    typescript = { "prettier" },
+    typescriptreact = { "prettier" },
+    javascript = { "prettier" },
+    javascriptreact = { "prettier" },
+    scala = { "scalafmt" },
+    kotlin = { "ktlint" },
     -- css = { "prettier" },
     -- html = { "prettier" },
   },
