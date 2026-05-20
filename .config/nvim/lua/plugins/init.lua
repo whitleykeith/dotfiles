@@ -65,6 +65,9 @@ return {
     opts = require "configs.conform",
   },
 
+  -- JSON/YAML schema catalog
+  { "b0o/schemastore.nvim", lazy = true },
+
   {
     "williamboman/mason.nvim",
     opts = {},
@@ -74,6 +77,7 @@ return {
     dependencies = { "mason.nvim", "neovim/nvim-lspconfig" },
     opts = {
       ensure_installed = {
+        -- Languages
         "gopls",
         "solargraph",
         "pyright",
@@ -82,6 +86,17 @@ return {
         "lua_ls",
         "html",
         "cssls",
+        "bashls",
+        -- Infrastructure / Config
+        "yamlls",
+        "jsonls",
+        "dockerls",
+        "docker_compose_language_service",
+        "terraformls",
+        "helm_ls",
+        "taplo",
+        "sqls",
+        "buf_ls",
       },
       automatic_installation = true,
     },
