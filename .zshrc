@@ -114,6 +114,9 @@ plugins=(git)
 
 source $ZSH/oh-my-zsh.sh
 
+# Fix terminal key bindings (backspace, arrow keys) over SSH
+export TERM=xterm-256color
+
 # User configuration
 
 # export MANPATH="/usr/local/man:$MANPATH"
