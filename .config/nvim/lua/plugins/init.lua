@@ -272,4 +272,15 @@ return {
       { "<leader>ct", "<cmd>CopilotChatTests<cr>", mode = "v", desc = "Copilot generate tests" },
     },
   },
+  {
+    "chrishrb/gx.nvim",
+    keys = { { "gx", "<cmd>Browse<cr>", mode = { "n", "x" }, desc = "Open URL under cursor" } },
+    cmd = { "Browse" },
+    dependencies = { "nvim-lua/plenary.nvim" },
+    opts = {
+      handler_options = {
+        search_engine = "https://search.brave.com/search?q=",
+      },
+    },
+  },
 }
