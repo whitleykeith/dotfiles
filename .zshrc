@@ -5,12 +5,14 @@ if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
 
+export TRINO_BASE_DOMAIN="${TRINO_BASE_DOMAIN:-localhost:8080}"
+
 trinocli () {
-	docker run --name trino_cli -it --rm --entrypoint trino trinodb/trino "https://trino-${1:-adhoc}.warehouse.service.github.net" --user "$(whoami)" --external-authentication
+	docker run --name trino_cli -it --rm --entrypoint trino trinodb/trino "https://trino-${1:-adhoc}.${TRINO_BASE_DOMAIN}" --user "$(whoami)" --external-authentication
 }
 
 trinocsv () {
-	docker run --mount type=bind,src=$(pwd)/$1,dst=/tmp/query.sql --name trino_cli -it --rm --entrypoint trino trinodb/trino "https://trino.warehouse.service.github.net" --user "$(whoami)" --external-authentication --output-format CSV -f /tmp/query.sql
+	docker run --mount type=bind,src=$(pwd)/$1,dst=/tmp/query.sql --name trino_cli -it --rm --entrypoint trino trinodb/trino "https://trino.${TRINO_BASE_DOMAIN}" --user "$(whoami)" --external-authentication --output-format CSV -f /tmp/query.sql
 }
 
 
@@ -22,7 +24,7 @@ fi
 
 export XDG_CONFIG_HOME=$HOME/.config
 export PATH="$HOME/.local/bin:$HOME/.docker/bin:$PATH"
-export GOPROXY=https://goproxy.githubapp.com/mod,https://proxy.golang.org/,direct
+export GOPROXY=${GOPROXY:-https://proxy.golang.org/,direct}
 export GOPRIVATE=
 export GONOPROXY=
 export GONOSUMDB=github.com/github/*
