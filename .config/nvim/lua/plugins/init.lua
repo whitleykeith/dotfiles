@@ -65,6 +65,27 @@ return {
     opts = require "configs.conform",
   },
 
+  {
+    "williamboman/mason.nvim",
+    opts = {},
+  },
+  {
+    "williamboman/mason-lspconfig.nvim",
+    dependencies = { "mason.nvim", "neovim/nvim-lspconfig" },
+    opts = {
+      ensure_installed = {
+        "gopls",
+        "solargraph",
+        "pyright",
+        "ts_ls",
+        "kotlin_language_server",
+        "lua_ls",
+        "html",
+        "cssls",
+      },
+      automatic_installation = true,
+    },
+  },
   -- These are some examples, uncomment them if you want to see them work!
   {
     "neovim/nvim-lspconfig",
