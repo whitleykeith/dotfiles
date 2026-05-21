@@ -101,6 +101,13 @@ if [ "$CODESPACES" = "true" ]; then
   echo "  Configured git credential helper for Codespaces"
 fi
 
+# ── Install Node.js/npm if not present (needed for LSP servers) ──
+if ! command -v npm &>/dev/null; then
+  echo "  Installing Node.js..."
+  curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - >/dev/null 2>&1
+  sudo apt-get install -y -qq nodejs >/dev/null 2>&1
+fi
+
 # ── Install LSP servers (only when their runtime is available) ──
 if command -v npm &>/dev/null; then
   echo "  Installing npm-based LSP servers..."
