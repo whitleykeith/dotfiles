@@ -277,10 +277,32 @@ return {
     keys = { { "gx", "<cmd>Browse<cr>", mode = { "n", "x" }, desc = "Open URL under cursor" } },
     cmd = { "Browse" },
     dependencies = { "nvim-lua/plenary.nvim" },
-    opts = {
-      handler_options = {
-        search_engine = "https://search.brave.com/search?q=",
-      },
-    },
+    opts = function()
+      -- In codespaces/SSH there's no xdg-open; print URL to yank instead
+      local open_cmd = nil
+      if vim.fn.has("mac") == 1 then
+        open_cmd = "open"
+      elseif vim.fn.executable("xdg-open") == 1 then
+        open_cmd = "xdg-open"
+      end
+
+      return {
+        open_browser_app = open_cmd,
+        handler_options = {
+          search_engine = "https://search.brave.com/search?q=",
+        },
+        handlers = {
+          -- Fallback: copy URL to clipboard when no browser available
+          brewfile = false,
+          search = open_cmd and true or {
+            name = "copy url",
+            handle = function(_, url)
+              vim.fn.setreg("+", url)
+              vim.notify("Copied: " .. url, vim.log.levels.INFO)
+            end,
+          },
+        },
+      }
+    end,
   },
 }
