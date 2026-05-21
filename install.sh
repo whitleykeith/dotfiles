@@ -81,6 +81,13 @@ install_neovim() {
 
 install_neovim
 
+# Install git-lfs if not present
+if ! command -v git-lfs &>/dev/null; then
+  echo "  Installing git-lfs..."
+  sudo apt-get update -qq && sudo apt-get install -y -qq git-lfs >/dev/null 2>&1
+  git lfs install 2>/dev/null || true
+fi
+
 # Install and set zsh as default shell
 if ! command -v zsh &>/dev/null; then
   echo "  Installing zsh..."
