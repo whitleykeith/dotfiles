@@ -101,6 +101,22 @@ if [ "$CODESPACES" = "true" ]; then
   echo "  Configured git credential helper for Codespaces"
 fi
 
+# ── Install LSP servers (only when their runtime is available) ──
+if command -v npm &>/dev/null; then
+  echo "  Installing npm-based LSP servers..."
+  npm install -g yaml-language-server typescript typescript-language-server bash-language-server vscode-langservers-extracted @tailwindcss/language-server 2>/dev/null || true
+fi
+
+if command -v pip3 &>/dev/null; then
+  echo "  Installing Python LSP servers..."
+  pip3 install --user pyright 2>/dev/null || true
+fi
+
+if command -v go &>/dev/null; then
+  echo "  Installing Go LSP servers..."
+  go install golang.org/x/tools/gopls@latest 2>/dev/null || true
+fi
+
 echo "✅ Dotfiles installed!"
 
 # ── Custom scripts ──
