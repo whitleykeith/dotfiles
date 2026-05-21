@@ -150,3 +150,7 @@ export TERM=xterm-256color
 
 export PATH="${PATH}:${HOME}/.krew/bin"
 alias tailscale="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+
+# Reset terminal state on HUP (SSH disconnect) to prevent escape code garbage
+TRAPHUPHUP() { stty sane 2>/dev/null; tput reset 2>/dev/null; }
+trap 'stty sane 2>/dev/null' EXIT
