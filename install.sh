@@ -39,21 +39,23 @@ fi
 
 # ── Install neovim (0.10+ required for NvChad / vim.uv) ──
 install_neovim() {
-  local NVIM_VERSION="v0.11.0"
+  # Fetch latest stable release tag from GitHub API
+  local NVIM_VERSION
+  NVIM_VERSION=$(curl -sL https://api.github.com/repos/neovim/neovim/releases/latest | grep -oP '"tag_name":\s*"\K[^"]+')
+  echo "  Latest neovim release: ${NVIM_VERSION}"
 
   if command -v nvim &>/dev/null; then
-    local major minor
-    major=$(nvim --version | head -1 | grep -oE '[0-9]+\.[0-9]+' | cut -d. -f1)
-    minor=$(nvim --version | head -1 | grep -oE '[0-9]+\.[0-9]+' | cut -d. -f2)
-    if [ "$major" -ge 1 ] || { [ "$major" -eq 0 ] && [ "$minor" -ge 11 ]; }; then
-      echo "  Neovim ${major}.${minor} already installed (>= 0.11)"
+    local current
+    current=$(nvim --version | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+    if [ "v${current}" = "${NVIM_VERSION}" ]; then
+      echo "  Neovim ${current} already installed (latest)"
       return
     fi
-    echo "  Neovim ${major}.${minor} is too old, upgrading..."
+    echo "  Neovim ${current} installed, upgrading to ${NVIM_VERSION}..."
     sudo rm -f "$(which nvim)"
     sudo apt-get remove -y neovim neovim-runtime 2>/dev/null || true
   else
-    echo "  Installing neovim..."
+    echo "  Installing neovim ${NVIM_VERSION}..."
   fi
 
   # Try prebuilt tarball first (fastest, requires GLIBC 2.34+)
