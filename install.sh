@@ -56,15 +56,30 @@ install_neovim() {
     echo "  Installing neovim..."
   fi
 
-  # Prebuilt tarball — fast, no build deps needed
-  curl -sL "https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux-x86_64.tar.gz" | sudo tar xz -C /opt
-  sudo ln -sf /opt/nvim-linux-x86_64/bin/nvim /usr/local/bin/nvim
+  # Use AppImage for maximum GLIBC compatibility (works on Ubuntu 20.04+)
+  curl -sL "https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux-x86_64.appimage" -o /tmp/nvim.appimage
+  chmod +x /tmp/nvim.appimage
+
+  # Try running directly first; if FUSE unavailable, extract it
+  if /tmp/nvim.appimage --version &>/dev/null; then
+    sudo mv /tmp/nvim.appimage /usr/local/bin/nvim
+  else
+    cd /tmp && /tmp/nvim.appimage --appimage-extract &>/dev/null
+    sudo mv /tmp/squashfs-root /opt/nvim-appimage
+    sudo ln -sf /opt/nvim-appimage/AppRun /usr/local/bin/nvim
+    rm -f /tmp/nvim.appimage
+  fi
+
   echo "  Installed $(nvim --version | head -1)"
 }
 
 install_neovim
 
-# Set default shell to zsh if available
+# Install and set zsh as default shell
+if ! command -v zsh &>/dev/null; then
+  echo "  Installing zsh..."
+  sudo apt-get update -qq && sudo apt-get install -y -qq zsh >/dev/null 2>&1
+fi
 if command -v zsh &>/dev/null; then
   if [ "$SHELL" != "$(which zsh)" ]; then
     sudo chsh -s "$(which zsh)" "$(whoami)" 2>/dev/null || true
