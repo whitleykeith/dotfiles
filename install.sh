@@ -56,18 +56,22 @@ install_neovim() {
     echo "  Installing neovim..."
   fi
 
-  # Use AppImage for maximum GLIBC compatibility (works on Ubuntu 20.04+)
-  curl -sL "https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux-x86_64.appimage" -o /tmp/nvim.appimage
-  chmod +x /tmp/nvim.appimage
-
-  # Try running directly first; if FUSE unavailable, extract it
-  if /tmp/nvim.appimage --version &>/dev/null; then
-    sudo mv /tmp/nvim.appimage /usr/local/bin/nvim
+  # Try prebuilt tarball first (fastest, requires GLIBC 2.34+)
+  curl -sL "https://github.com/neovim/neovim/releases/download/${NVIM_VERSION}/nvim-linux-x86_64.tar.gz" | sudo tar xz -C /opt
+  if /opt/nvim-linux-x86_64/bin/nvim --version &>/dev/null; then
+    sudo ln -sf /opt/nvim-linux-x86_64/bin/nvim /usr/local/bin/nvim
   else
-    cd /tmp && /tmp/nvim.appimage --appimage-extract &>/dev/null
-    sudo mv /tmp/squashfs-root /opt/nvim-appimage
-    sudo ln -sf /opt/nvim-appimage/AppRun /usr/local/bin/nvim
-    rm -f /tmp/nvim.appimage
+    # GLIBC too old for prebuilt binary — build from source
+    echo "  Prebuilt binary incompatible with this GLIBC, building from source..."
+    sudo rm -rf /opt/nvim-linux-x86_64
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq ninja-build gettext cmake unzip curl build-essential >/dev/null 2>&1
+    curl -sL "https://github.com/neovim/neovim/archive/refs/tags/${NVIM_VERSION}.tar.gz" | tar xz -C /tmp
+    cd /tmp/neovim-${NVIM_VERSION#v}
+    make CMAKE_BUILD_TYPE=Release -j"$(nproc)" >/dev/null 2>&1
+    sudo make install >/dev/null 2>&1
+    cd - >/dev/null
+    rm -rf "/tmp/neovim-${NVIM_VERSION#v}"
   fi
 
   echo "  Installed $(nvim --version | head -1)"
