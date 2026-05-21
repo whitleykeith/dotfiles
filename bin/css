@@ -175,15 +175,14 @@ cmd_forward() {
     gh codespace start -c "$CS_NAME" 2>/dev/null || true
   fi
 
-  # Build port forward args
-  local port_args=""
+  # Build port forward args (space-separated port:port pairs)
+  local port_args=()
   for p in "${ports[@]}"; do
-    port_args+="${p}:${p},"
+    port_args+=("${p}:${p}")
   done
-  port_args="${port_args%,}"
 
   echo "🔌 Forwarding port(s) ${ports[*]} from $CS_NAME..."
-  gh codespace ports forward "$port_args" -c "$CS_NAME"
+  gh codespace ports forward "${port_args[@]}" -c "$CS_NAME"
 }
 
 cmd_ssh() {
