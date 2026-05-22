@@ -234,6 +234,104 @@ cmd_ssh() {
   fi
 }
 
+cmd_local() {
+  local repo="$1"
+  local action="${2:-shell}"
+
+  if [ -z "$repo" ]; then
+    echo "Usage: css local <repo> [shell|up|down|rebuild]"
+    echo ""
+    echo "  css local github/data-dot          Clone, build, and shell in"
+    echo "  css local github/data-dot up       Start container (no shell)"
+    echo "  css local github/data-dot down     Stop and remove container"
+    echo "  css local github/data-dot rebuild  Rebuild from scratch"
+    echo "  css local .                        Use current directory"
+    exit 1
+  fi
+
+  # Check dependencies
+  if ! command -v devcontainer &>/dev/null; then
+    echo "📦 Installing devcontainer CLI..."
+    npm install -g @devcontainers/cli
+  fi
+  if ! docker info &>/dev/null 2>&1; then
+    echo "❌ Docker is not running. Start Docker Desktop or OrbStack first."
+    exit 1
+  fi
+
+  # Resolve workspace folder
+  local workspace
+  if [ "$repo" = "." ]; then
+    workspace="$(pwd)"
+  else
+    local repo_name="${repo##*/}"
+    workspace="$HOME/git/${repo_name}"
+    if [ ! -d "$workspace" ]; then
+      echo "📥 Cloning $repo..."
+      mkdir -p "$HOME/git"
+      gh repo clone "$repo" "$workspace"
+    fi
+  fi
+
+  if [ ! -f "$workspace/.devcontainer/devcontainer.json" ] && \
+     [ ! -f "$workspace/.devcontainer.json" ]; then
+    echo "⚠️  No devcontainer.json found in $workspace"
+    read -rp "Continue with default config? (y/n): " confirm
+    [ "$confirm" = "y" ] || exit 0
+  fi
+
+  case "$action" in
+    up)
+      echo "🔨 Building and starting devcontainer for $workspace..."
+      devcontainer up --workspace-folder "$workspace"
+      echo "✅ Container running. Use 'css local $repo' to shell in."
+      ;;
+    down)
+      echo "🛑 Stopping devcontainer for $workspace..."
+      local container_id
+      container_id=$(docker ps -q --filter "label=devcontainer.local_folder=$workspace")
+      if [ -n "$container_id" ]; then
+        docker rm -f "$container_id"
+        echo "✅ Container removed."
+      else
+        echo "No running container found for $workspace"
+      fi
+      ;;
+    rebuild)
+      echo "♻️  Rebuilding devcontainer for $workspace..."
+      local container_id
+      container_id=$(docker ps -aq --filter "label=devcontainer.local_folder=$workspace")
+      [ -n "$container_id" ] && docker rm -f "$container_id"
+      devcontainer up --workspace-folder "$workspace" --remove-existing-container
+      echo "✅ Rebuilt. Use 'css local $repo' to shell in."
+      ;;
+    shell|"")
+      # Start if not running
+      local container_id
+      container_id=$(docker ps -q --filter "label=devcontainer.local_folder=$workspace")
+      if [ -z "$container_id" ]; then
+        echo "🔨 Starting devcontainer for $workspace..."
+        devcontainer up --workspace-folder "$workspace"
+        container_id=$(docker ps -q --filter "label=devcontainer.local_folder=$workspace")
+      fi
+      if [ -z "$container_id" ]; then
+        echo "❌ Failed to start container"
+        exit 1
+      fi
+      echo "🔗 Connecting to devcontainer..."
+      # Prefer zsh, fall back to bash, then sh
+      local shell_cmd
+      shell_cmd=$(docker exec "$container_id" sh -c 'command -v zsh || command -v bash || echo sh' 2>/dev/null)
+      docker exec -it -w /workspaces/"${workspace##*/}" "$container_id" "$shell_cmd"
+      ;;
+    *)
+      echo "Unknown action: $action"
+      echo "Use: shell, up, down, or rebuild"
+      exit 1
+      ;;
+  esac
+}
+
 # ── Dispatch ──
 
 case "$CMD" in
@@ -246,6 +344,7 @@ case "$CMD" in
   logs)        cmd_logs ;;
   web)         cmd_web ;;
   forward|fwd) cmd_forward "$ARG" "${@:3}" ;;
+  local)       cmd_local "$ARG" "${@:3}" ;;
   help|-h|--help)
     echo "css — Codespace manager"
     echo ""
@@ -261,6 +360,7 @@ case "$CMD" in
     echo "  css logs [repo]         View creation logs"
     echo "  css web [repo]          Open in VS Code web"
     echo "  css forward <repo> <port> [port...]  Forward ports"
+    echo "  css local <repo> [shell|up|down|rebuild]  Local devcontainer"
     ;;
   *)           cmd_ssh "$CMD" ;;
 esac
