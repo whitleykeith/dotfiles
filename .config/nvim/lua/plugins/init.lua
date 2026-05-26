@@ -305,15 +305,4 @@ return {
       }
     end,
   },
-  {
-    "r-pletnev/pdfreader.nvim",
-    ft = "pdf",
-    dependencies = {
-      "nvim-telescope/telescope.nvim",
-      { "folke/snacks.nvim", opts = { image = { enabled = true } } },
-    },
-    opts = {
-      reading_mode = "dark",
-    },
-  },
 }
