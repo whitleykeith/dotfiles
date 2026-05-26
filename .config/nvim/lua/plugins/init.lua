@@ -305,4 +305,12 @@ return {
       }
     end,
   },
+  {
+    "r-pletnev/pdfreader.nvim",
+    ft = "pdf",
+    dependencies = { "nvim-telescope/telescope.nvim" },
+    opts = {
+      reading_mode = "dark",
+    },
+  },
 }
