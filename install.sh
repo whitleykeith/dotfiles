@@ -35,6 +35,58 @@ if [ -d "$DOTFILES_DIR/.config/nvim" ]; then
   echo "  Linked .config/nvim"
 fi
 
+# ── Install Copilot CLI skills (Matt Pocock's skills repo) ──
+# Clones the upstream repo and symlinks each skill into ~/.copilot/skills/
+# so the Copilot CLI picks them up on next start. Edit, add, or remove a
+# skill upstream and rerun this script — symlinks pick up new state.
+SKILLS_REPO_URL="https://github.com/mattpocock/skills.git"
+SKILLS_REPO_DIR="$HOME/git/skills"
+SKILLS_LINK_DIR="$HOME/.copilot/skills"
+# Category directories to skip when linking (still cloned into the repo).
+SKILLS_SKIP_CATEGORIES="deprecated in-progress"
+
+install_copilot_skills() {
+  if ! command -v git &>/dev/null; then
+    echo "  git not found, skipping Copilot CLI skills install"
+    return
+  fi
+
+  if [ ! -d "$SKILLS_REPO_DIR/.git" ]; then
+    echo "  Cloning $SKILLS_REPO_URL → $SKILLS_REPO_DIR"
+    mkdir -p "$(dirname "$SKILLS_REPO_DIR")"
+    git clone --depth 1 "$SKILLS_REPO_URL" "$SKILLS_REPO_DIR"
+  else
+    echo "  Updating $SKILLS_REPO_DIR"
+    git -C "$SKILLS_REPO_DIR" pull --ff-only --quiet 2>/dev/null \
+      || echo "  (skills repo pull failed, continuing with existing checkout)"
+  fi
+
+  mkdir -p "$SKILLS_LINK_DIR"
+  local linked=0
+  local category_dir category skill_dir skill dest
+  for category_dir in "$SKILLS_REPO_DIR/skills/"*/; do
+    [ -d "$category_dir" ] || continue
+    category="$(basename "$category_dir")"
+    case " $SKILLS_SKIP_CATEGORIES " in
+      *" $category "*) continue ;;
+    esac
+    for skill_dir in "$category_dir"*/; do
+      [ -f "$skill_dir/SKILL.md" ] || continue
+      skill="$(basename "$skill_dir")"
+      dest="$SKILLS_LINK_DIR/$skill"
+      if [ -e "$dest" ] && [ ! -L "$dest" ]; then
+        mv "$dest" "$dest.bak"
+        echo "  Backed up existing $dest → $dest.bak"
+      fi
+      ln -sfn "${skill_dir%/}" "$dest"
+      linked=$((linked + 1))
+    done
+  done
+  echo "  Linked $linked Copilot CLI skill(s) into $SKILLS_LINK_DIR"
+}
+
+install_copilot_skills
+
 # ── Install tools commonly needed in codespaces ──
 
 # ── Install neovim (0.10+ required for NvChad / vim.uv) ──

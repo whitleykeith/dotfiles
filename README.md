@@ -12,6 +12,8 @@ Personal configuration files.
 - `.config/nvim/` — Neovim configuration (NvChad v2.5 based)
 - `install.sh` — Automated setup script (used by Codespaces)
 
+`install.sh` also clones [mattpocock/skills](https://github.com/mattpocock/skills) to `~/git/skills` and symlinks each skill into `~/.copilot/skills/` (skipping `deprecated` and `in-progress`). Rerun it to pick up upstream changes.
+
 ## GitHub Codespaces
 
 This repo is set up for automatic personalization in [GitHub Codespaces](https://docs.github.com/en/codespaces/setting-your-user-preferences/personalizing-github-codespaces-for-your-account#dotfiles).
