@@ -1,0 +1,76 @@
+#!/bin/bash
+# dfs — dotfiles sync
+# Stages, commits, and pushes any pending changes in ~/dotfiles.
+#
+# Usage:
+#   dfs                    show pending changes and prompt to commit/push
+#   dfs "commit message"   use a custom commit message (skips prompt)
+#   dfs -n / --dry-run     show pending changes only, don't commit
+#   dfs -y / --yes         commit + push without prompting
+
+set -e
+
+DOTFILES_DIR="${DOTFILES_DIR:-$HOME/dotfiles}"
+
+if [ ! -d "$DOTFILES_DIR/.git" ]; then
+  echo "dfs: $DOTFILES_DIR is not a git repo" >&2
+  exit 1
+fi
+
+cd "$DOTFILES_DIR"
+
+dry_run=0
+auto_yes=0
+msg=""
+for arg in "$@"; do
+  case "$arg" in
+    -n|--dry-run) dry_run=1 ;;
+    -y|--yes)     auto_yes=1 ;;
+    -h|--help)
+      sed -n '/^# Usage:/,/^$/p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    *) msg="$arg" ;;
+  esac
+done
+
+# Show what's pending
+status="$(git status --porcelain)"
+if [ -z "$status" ]; then
+  echo "✅ Already in sync (nothing to commit)"
+  # Still attempt a fast-forward pull/push in case upstream is ahead/behind
+  git fetch --quiet origin
+  local_sha="$(git rev-parse @)"
+  remote_sha="$(git rev-parse '@{u}' 2>/dev/null || echo "")"
+  if [ -n "$remote_sha" ] && [ "$local_sha" != "$remote_sha" ]; then
+    echo "ℹ️  Local and origin/$(git symbolic-ref --short HEAD) differ — try 'git pull --rebase' / 'git push'"
+  fi
+  exit 0
+fi
+
+echo "📝 Pending changes:"
+git status --short
+echo
+git diff --stat HEAD
+
+if [ "$dry_run" = "1" ]; then
+  exit 0
+fi
+
+if [ "$auto_yes" != "1" ]; then
+  printf "\nCommit and push to origin/%s? [y/N] " "$(git symbolic-ref --short HEAD)"
+  read -r reply
+  case "$reply" in
+    y|Y|yes|YES) ;;
+    *) echo "Aborted."; exit 1 ;;
+  esac
+fi
+
+if [ -z "$msg" ]; then
+  msg="sync: $(date +%Y-%m-%d)"
+fi
+
+git add -A
+git commit -m "$msg"
+git push
+echo "✅ Synced"
