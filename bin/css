@@ -1,16 +1,16 @@
 #!/bin/bash
 # css — Codespace manager
 # Usage:
-#   css                     List all codespaces, pick one to SSH into
-#   css <repo>              SSH into codespace for repo (creates if none exist)
-#   css ls                  List all codespaces
-#   css rm [repo]           Delete a codespace (prompts to pick)
-#   css rebuild [repo]      Rebuild a codespace (full rebuild)
-#   css stop [repo]         Stop a running codespace
-#   css start [repo]        Start a stopped codespace
-#   css create <repo>       Create a new codespace
-#   css logs [repo]         View creation logs for a codespace
-#   css web [repo]          Open a codespace in VS Code web
+#   css                          List all codespaces, pick one to SSH into
+#   css <repo> [branch]          SSH into codespace for repo (creates if none exist)
+#   css ls                       List all codespaces
+#   css rm [repo]                Delete a codespace (prompts to pick)
+#   css rebuild [repo]           Rebuild a codespace (full rebuild)
+#   css stop [repo]              Stop a running codespace
+#   css start [repo]             Start a stopped codespace
+#   css create <repo> [branch]   Create a new codespace
+#   css logs [repo]              View creation logs for a codespace
+#   css web [repo]               Open a codespace in VS Code web
 
 set -e
 
@@ -112,13 +112,20 @@ cmd_start() {
 }
 
 cmd_create() {
-  local repo="${ARG:-$1}"
+  local repo="${1:-$ARG}"
+  local branch="$2"
   if [ -z "$repo" ]; then
     read -rp "Repo (e.g. github/github): " repo
   fi
-  echo "🆕 Creating codespace for $repo..."
-  gh codespace create --repo "$repo" --status
-  echo "✅ Created. Run 'css $repo' to SSH in."
+  local create_args=(--repo "$repo" --status)
+  local label="$repo"
+  if [ -n "$branch" ]; then
+    create_args+=(-b "$branch")
+    label="$repo on branch $branch"
+  fi
+  echo "🆕 Creating codespace for $label..."
+  gh codespace create "${create_args[@]}"
+  echo "✅ Created. Run 'css $repo${branch:+ $branch}' to SSH in."
 }
 
 cmd_logs() {
@@ -187,6 +194,7 @@ cmd_forward() {
 
 cmd_ssh() {
   local repo="$1"
+  local branch="$2"
 
   # No repo — list all and pick
   if [ -z "$repo" ]; then
@@ -197,32 +205,45 @@ cmd_ssh() {
     return
   fi
 
-  # Repo specified — find matching
+  # Repo specified — find matching (optionally filtered by branch)
   local data
-  data=$(gh codespace list --repo "$repo" --json name,state,displayName 2>/dev/null)
+  data=$(gh codespace list --repo "$repo" --json name,state,displayName,gitStatus 2>/dev/null)
+  if [ -n "$branch" ]; then
+    data=$(echo "$data" | jq --arg b "$branch" '[.[] | select(.gitStatus.ref == $b)]')
+  fi
   local count
   count=$(echo "$data" | jq 'length')
 
+  local label="$repo"
+  [ -n "$branch" ] && label="$repo on branch $branch"
+
   if [ "$count" -eq 0 ]; then
-    echo "🆕 No codespaces found for $repo. Creating one..."
-    gh codespace create --repo "$repo" --status
+    echo "🆕 No codespaces found for $label. Creating one..."
+    local create_args=(--repo "$repo" --status)
+    [ -n "$branch" ] && create_args+=(-b "$branch")
+    gh codespace create "${create_args[@]}"
     local name
-    name=$(gh codespace list --repo "$repo" --json name --jq '.[0].name')
+    if [ -n "$branch" ]; then
+      name=$(gh codespace list --repo "$repo" --json name,gitStatus \
+        --jq "[.[] | select(.gitStatus.ref == \"$branch\")] | .[0].name")
+    else
+      name=$(gh codespace list --repo "$repo" --json name --jq '.[0].name')
+    fi
     ssh_into "$name" "Available"
 
   elif [ "$count" -eq 1 ]; then
     ssh_into "$(echo "$data" | jq -r '.[0].name')" "$(echo "$data" | jq -r '.[0].state')"
 
   else
-    echo "Found $count codespaces for $repo:"
+    echo "Found $count codespaces for $label:"
     echo ""
-    echo "$data" | jq -r '.[] | "\(.name)\t\(.state)\t\(.displayName)"' | \
+    echo "$data" | jq -r '.[] | "\(.name)\t\(.state)\t\(.gitStatus.ref // "-")\t\(.displayName)"' | \
       column -t -s $'\t' | nl -ba
     echo ""
     read -rp "Pick a number (c=create new, q=quit): " choice
     [ "$choice" = "q" ] && exit 0
     if [ "$choice" = "c" ]; then
-      cmd_create "$repo"
+      cmd_create "$repo" "$branch"
     else
       local idx=$((choice - 1))
       local name state
@@ -340,7 +361,7 @@ case "$CMD" in
   rebuild)     cmd_rebuild ;;
   stop)        cmd_stop ;;
   start)       cmd_start ;;
-  create|new)  cmd_create ;;
+  create|new)  cmd_create "$ARG" "$3" ;;
   logs)        cmd_logs ;;
   web)         cmd_web ;;
   forward|fwd) cmd_forward "$ARG" "${@:3}" ;;
@@ -349,18 +370,18 @@ case "$CMD" in
     echo "css — Codespace manager"
     echo ""
     echo "Usage:"
-    echo "  css                     SSH into a codespace (list all, pick one)"
-    echo "  css <repo>              SSH into codespace for repo (auto-create)"
-    echo "  css ls [repo]           List codespaces"
-    echo "  css rm [repo]           Delete a codespace"
-    echo "  css rebuild [repo]      Full rebuild a codespace"
-    echo "  css stop [repo]         Stop a codespace"
-    echo "  css start [repo]        Start a codespace"
-    echo "  css create <repo>       Create a new codespace"
-    echo "  css logs [repo]         View creation logs"
-    echo "  css web [repo]          Open in VS Code web"
+    echo "  css                          SSH into a codespace (list all, pick one)"
+    echo "  css <repo> [branch]          SSH into codespace for repo (auto-create)"
+    echo "  css ls [repo]                List codespaces"
+    echo "  css rm [repo]                Delete a codespace"
+    echo "  css rebuild [repo]           Full rebuild a codespace"
+    echo "  css stop [repo]              Stop a codespace"
+    echo "  css start [repo]             Start a codespace"
+    echo "  css create <repo> [branch]   Create a new codespace"
+    echo "  css logs [repo]              View creation logs"
+    echo "  css web [repo]               Open in VS Code web"
     echo "  css forward <repo> <port> [port...]  Forward ports"
     echo "  css local <repo> [shell|up|down|rebuild]  Local devcontainer"
     ;;
-  *)           cmd_ssh "$CMD" ;;
+  *)           cmd_ssh "$CMD" "$ARG" ;;
 esac
