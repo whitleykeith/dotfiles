@@ -14,6 +14,12 @@ return {
         },
       }
 
+      nvchad_opts.filesystem_watchers = {
+        enable = true,
+        debounce_delay = 50,
+        ignore_dirs = { "node_modules", ".git", "__pycache__", ".venv", "target", "dist", "build" },
+      }
+
       local preview_buf, preview_win
       local function close_preview()
         if preview_win and vim.api.nvim_win_is_valid(preview_win) then
@@ -57,6 +63,16 @@ return {
       end
 
       require("nvim-tree").setup(nvchad_opts)
+
+      -- Fallback refresh for cases fs_event misses (codespaces/SSHFS, agent edits)
+      vim.api.nvim_create_autocmd({ "FocusGained", "BufEnter" }, {
+        callback = function()
+          local ok_view, view = pcall(require, "nvim-tree.view")
+          if ok_view and view.is_visible() then
+            require("nvim-tree.api").tree.reload()
+          end
+        end,
+      })
     end,
   },
   {

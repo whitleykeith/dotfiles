@@ -1,0 +1,257 @@
+#!/bin/bash
+# install-lsps — install common language servers (Scala, Python, YAML, Go, Ruby, Java, Kotlin)
+#
+# Idempotent: skips anything already on PATH. OS-aware: prefers Homebrew on
+# macOS, falls back to language-native installers (coursier, npm, pip, gem,
+# go install) on Linux / Codespaces.
+#
+# Usage:
+#   install-lsps                install all
+#   install-lsps scala go ruby  install only the listed langs
+#   install-lsps --list         show what's currently installed
+#   install-lsps -h | --help    this help
+#
+# Languages installed:
+#   scala   metals               (requires JDK + coursier)
+#   python  pyright
+#   yaml    yaml-language-server (requires npm)
+#   go      gopls                (requires go)
+#   ruby    solargraph + ruby-lsp(requires gem)
+#   java    jdtls                (requires JDK)
+#   kotlin  kotlin-language-server (requires JDK)
+
+set -e
+
+ALL_LANGS=(scala python yaml go ruby java kotlin)
+
+usage() { sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//' | sed '/^!/d'; }
+
+# ── Parse args ──────────────────────────────────────────────────────────────
+selected=()
+list_only=0
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help)  usage; exit 0 ;;
+    --list)     list_only=1 ;;
+    -*)         echo "unknown flag: $arg" >&2; exit 2 ;;
+    *)          selected+=("$arg") ;;
+  esac
+done
+if [ ${#selected[@]} -eq 0 ]; then
+  selected=("${ALL_LANGS[@]}")
+fi
+
+# ── OS detection ────────────────────────────────────────────────────────────
+OS="$(uname -s)"
+ARCH="$(uname -m)"
+IS_MAC=0; IS_LINUX=0
+case "$OS" in
+  Darwin) IS_MAC=1 ;;
+  Linux)  IS_LINUX=1 ;;
+  *)      echo "Unsupported OS: $OS" >&2; exit 1 ;;
+esac
+
+have() { command -v "$1" >/dev/null 2>&1; }
+step() { echo "→ $*"; }
+note() { echo "    $*"; }
+warn() { echo "    ⚠ $*" >&2; }
+ok()   { echo "    ✓ $*"; }
+
+# ── --list mode ─────────────────────────────────────────────────────────────
+if [ "$list_only" -eq 1 ]; then
+  printf "%-12s %-30s %s\n" LANG SERVER STATUS
+  printf "%-12s %-30s %s\n" "----" "------" "------"
+  check() {
+    local lang=$1 bin=$2
+    if have "$bin"; then
+      printf "%-12s %-30s %s\n" "$lang" "$bin" "$(command -v "$bin")"
+    else
+      printf "%-12s %-30s %s\n" "$lang" "$bin" "(missing)"
+    fi
+  }
+  check scala  metals
+  check python pyright
+  check yaml   yaml-language-server
+  check go     gopls
+  check ruby   solargraph
+  check ruby   ruby-lsp
+  check java   jdtls
+  check kotlin kotlin-language-server
+  exit 0
+fi
+
+# ── Brew helper (macOS only) ────────────────────────────────────────────────
+brew_install() {
+  if ! have brew; then
+    warn "Homebrew not found, skipping: $*"; return 1
+  fi
+  brew list "$1" >/dev/null 2>&1 && { ok "$1 already installed"; return 0; }
+  brew install "$@"
+}
+
+# ── Coursier bootstrap (for metals) ─────────────────────────────────────────
+ensure_coursier() {
+  if have cs; then return 0; fi
+  if [ $IS_MAC -eq 1 ] && have brew; then
+    brew install coursier/formulas/coursier 2>/dev/null \
+      || brew install coursier
+    return 0
+  fi
+  note "Installing coursier to ~/.local/bin/cs"
+  mkdir -p "$HOME/.local/bin"
+  local cs_url
+  case "$ARCH" in
+    x86_64|amd64) cs_url="https://github.com/coursier/launchers/raw/master/cs-x86_64-pc-linux.gz" ;;
+    aarch64|arm64) cs_url="https://github.com/coursier/launchers/raw/master/cs-aarch64-pc-linux.gz" ;;
+    *) warn "Unsupported arch for coursier: $ARCH"; return 1 ;;
+  esac
+  curl -fL "$cs_url" | gunzip > "$HOME/.local/bin/cs"
+  chmod +x "$HOME/.local/bin/cs"
+  export PATH="$HOME/.local/bin:$PATH"
+}
+
+ensure_jdk() {
+  have java && return 0
+  if [ $IS_MAC -eq 1 ]; then
+    brew_install openjdk@17 || return 1
+    # brew openjdk needs symlink for system to find it
+    [ -d /opt/homebrew/opt/openjdk@17 ] && \
+      sudo ln -sfn /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk \
+        /Library/Java/JavaVirtualMachines/openjdk-17.jdk 2>/dev/null || true
+  else
+    note "Installing OpenJDK 17 via apt"
+    sudo apt-get update -qq && sudo apt-get install -y -qq openjdk-17-jdk
+  fi
+}
+
+# ── Per-language installers ─────────────────────────────────────────────────
+install_scala() {
+  step "Scala — metals"
+  if have metals; then ok "metals already installed ($(command -v metals))"; return 0; fi
+  ensure_jdk        || { warn "skipping metals: no JDK"; return 1; }
+  ensure_coursier   || { warn "skipping metals: coursier unavailable"; return 1; }
+  cs install metals
+}
+
+install_python() {
+  step "Python — pyright"
+  if have pyright; then ok "pyright already installed ($(command -v pyright))"; return 0; fi
+  if [ $IS_MAC -eq 1 ] && have brew; then brew_install pyright; return; fi
+  if have npm;  then npm install -g pyright; return; fi
+  if have pipx; then pipx install pyright;  return; fi
+  if have pip3; then pip3 install --user pyright; return; fi
+  warn "no npm/pipx/pip3 — cannot install pyright"; return 1
+}
+
+install_yaml() {
+  step "YAML — yaml-language-server"
+  if have yaml-language-server; then ok "already installed"; return 0; fi
+  if have npm; then npm install -g yaml-language-server; return; fi
+  warn "needs npm"; return 1
+}
+
+install_go() {
+  step "Go — gopls"
+  if have gopls; then ok "gopls already installed ($(command -v gopls))"; return 0; fi
+  if have go; then
+    go install golang.org/x/tools/gopls@latest
+    note "ensure \$(go env GOPATH)/bin is on PATH"
+    return
+  fi
+  warn "needs go runtime"; return 1
+}
+
+install_ruby() {
+  step "Ruby — solargraph + ruby-lsp"
+  local did=0
+  if have solargraph; then ok "solargraph already installed"; else
+    if have gem; then gem install --user-install solargraph && did=1; fi
+  fi
+  if have ruby-lsp; then ok "ruby-lsp already installed"; else
+    if have gem; then gem install --user-install ruby-lsp && did=1; fi
+  fi
+  [ $did -eq 1 ] && note "ensure \$(ruby -e 'puts Gem.user_dir')/bin is on PATH"
+  if ! have gem; then warn "needs ruby/gem"; return 1; fi
+}
+
+install_java() {
+  step "Java — jdtls (Eclipse JDT Language Server)"
+  if have jdtls; then ok "jdtls already installed ($(command -v jdtls))"; return 0; fi
+  ensure_jdk || { warn "skipping jdtls: no JDK"; return 1; }
+  if [ $IS_MAC -eq 1 ] && have brew; then brew_install jdtls; return; fi
+  # Linux fallback: download Eclipse JDT.LS snapshot
+  local dest="$HOME/.local/share/jdtls"
+  local url="https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz"
+  note "Downloading jdtls to $dest"
+  mkdir -p "$dest" "$HOME/.local/bin"
+  curl -fL "$url" | tar -xz -C "$dest"
+  # Write a thin launcher
+  cat >"$HOME/.local/bin/jdtls" <<'LAUNCHER'
+#!/bin/bash
+# minimal jdtls launcher
+JDTLS_HOME="$HOME/.local/share/jdtls"
+LAUNCHER_JAR=$(ls "$JDTLS_HOME"/plugins/org.eclipse.equinox.launcher_*.jar | head -1)
+CONFIG_DIR="$JDTLS_HOME/config_linux"
+[ "$(uname)" = "Darwin" ] && CONFIG_DIR="$JDTLS_HOME/config_mac"
+exec java \
+  -Declipse.application=org.eclipse.jdt.ls.core.id1 \
+  -Dosgi.bundles.defaultStartLevel=4 \
+  -Declipse.product=org.eclipse.jdt.ls.core.product \
+  -Dlog.level=ALL -Xms1g \
+  --add-modules=ALL-SYSTEM \
+  --add-opens java.base/java.util=ALL-UNNAMED \
+  --add-opens java.base/java.lang=ALL-UNNAMED \
+  -jar "$LAUNCHER_JAR" \
+  -configuration "$CONFIG_DIR" \
+  -data "${1:-$HOME/.cache/jdtls-workspace}" \
+  "$@"
+LAUNCHER
+  chmod +x "$HOME/.local/bin/jdtls"
+}
+
+install_kotlin() {
+  step "Kotlin — kotlin-language-server"
+  if have kotlin-language-server; then ok "already installed ($(command -v kotlin-language-server))"; return 0; fi
+  ensure_jdk || { warn "skipping kotlin-language-server: no JDK"; return 1; }
+  if [ $IS_MAC -eq 1 ] && have brew; then brew_install kotlin-language-server; return; fi
+  # Linux fallback: download latest release from fwcd/kotlin-language-server
+  local dest="$HOME/.local/share/kotlin-language-server"
+  local zip="/tmp/kotlin-language-server.zip"
+  note "Downloading kotlin-language-server to $dest"
+  local url
+  url=$(curl -fsSL https://api.github.com/repos/fwcd/kotlin-language-server/releases/latest \
+        | grep -oE 'https://[^"]+server\.zip' | head -1)
+  [ -z "$url" ] && { warn "could not resolve latest release URL"; return 1; }
+  curl -fL "$url" -o "$zip"
+  rm -rf "$dest"; mkdir -p "$dest" "$HOME/.local/bin"
+  unzip -q "$zip" -d "$dest"
+  ln -sf "$dest/server/bin/kotlin-language-server" "$HOME/.local/bin/kotlin-language-server"
+  rm -f "$zip"
+}
+
+# ── Run selected ────────────────────────────────────────────────────────────
+echo "Installing language servers for: ${selected[*]}"
+echo "(OS=$OS arch=$ARCH)"
+echo
+
+failed=()
+for lang in "${selected[@]}"; do
+  case "$lang" in
+    scala)  install_scala  || failed+=("scala")  ;;
+    python) install_python || failed+=("python") ;;
+    yaml)   install_yaml   || failed+=("yaml")   ;;
+    go)     install_go     || failed+=("go")     ;;
+    ruby)   install_ruby   || failed+=("ruby")   ;;
+    java)   install_java   || failed+=("java")   ;;
+    kotlin) install_kotlin || failed+=("kotlin") ;;
+    *)      warn "unknown language: $lang"; failed+=("$lang") ;;
+  esac
+  echo
+done
+
+if [ ${#failed[@]} -eq 0 ]; then
+  echo "✅ All language servers installed."
+else
+  echo "⚠ Completed with issues: ${failed[*]}"
+  echo "   Run 'install-lsps --list' to see what's available."
+fi

@@ -10,6 +10,7 @@ Personal configuration files.
 - `.bash_profile` — Bash profile
 - `.vimrc` — Vim configuration
 - `.config/nvim/` — Neovim configuration (NvChad v2.5 based)
+- `bin/install-lsps` — install common language servers (Scala, Python, YAML, Go, Ruby, Java, Kotlin)
 - `install.sh` — Automated setup script (used by Codespaces)
 
 `install.sh` also clones [mattpocock/skills](https://github.com/mattpocock/skills) to `~/git/skills` and symlinks each skill into `~/.copilot/skills/` (skipping `deprecated` and `in-progress`). Rerun it to pick up upstream changes.
@@ -28,6 +29,17 @@ When a codespace starts, `install.sh` runs automatically and:
 - Installs neovim if not present
 - Sets zsh as the default shell
 - Configures git credential helper for Codespaces
+- Runs `bin/install-lsps` to install common language servers (Scala metals, pyright, yaml-language-server, gopls, solargraph + ruby-lsp, jdtls, kotlin-language-server)
+
+## Language servers
+
+`bin/install-lsps` is OS-aware (Homebrew on macOS, language-native installers on Linux) and idempotent — anything already on `PATH` is skipped.
+
+```bash
+install-lsps                # install all
+install-lsps scala go ruby  # install only the listed langs
+install-lsps --list         # show what's currently installed
+```
 
 ## Manual Setup
 

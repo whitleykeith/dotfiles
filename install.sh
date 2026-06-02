@@ -167,21 +167,15 @@ if ! command -v npm &>/dev/null; then
   sudo apt-get install -y -qq nodejs >/dev/null 2>&1
 fi
 
-# ── Install LSP servers (only when their runtime is available) ──
+# ── Install language servers ──
+# Web/IDE LSPs not covered by bin/install-lsps stay inline here.
 if command -v npm &>/dev/null; then
-  echo "  Installing npm-based LSP servers..."
-  npm install -g yaml-language-server typescript typescript-language-server bash-language-server vscode-langservers-extracted @tailwindcss/language-server 2>/dev/null || true
+  echo "  Installing web/IDE LSP servers via npm..."
+  npm install -g typescript typescript-language-server bash-language-server vscode-langservers-extracted @tailwindcss/language-server 2>/dev/null || true
 fi
 
-if command -v pip3 &>/dev/null; then
-  echo "  Installing Python LSP servers..."
-  pip3 install --user pyright 2>/dev/null || true
-fi
-
-if command -v go &>/dev/null; then
-  echo "  Installing Go LSP servers..."
-  go install golang.org/x/tools/gopls@latest 2>/dev/null || true
-fi
+# Per-language servers (scala/python/yaml/go/ruby/java/kotlin) handled by
+# bin/install-lsps — invoked after bin/ is symlinked into ~/bin below.
 
 echo "✅ Dotfiles installed!"
 
@@ -192,4 +186,10 @@ if [ -d "$DOTFILES_DIR/bin" ]; then
     ln -sf "$script" "$HOME/bin/$(basename "$script")"
     echo "  Linked bin/$(basename "$script")"
   done
+fi
+
+# ── Common language servers (Scala/Python/YAML/Go/Ruby/Java/Kotlin) ──
+if [ -x "$HOME/bin/install-lsps" ]; then
+  echo "  Installing common language servers..."
+  "$HOME/bin/install-lsps" 2>&1 | sed 's/^/    /' || true
 fi
