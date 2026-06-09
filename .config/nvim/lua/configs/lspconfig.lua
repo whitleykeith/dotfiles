@@ -83,15 +83,28 @@ vim.lsp.config("jsonls", {
   },
 })
 
--- Scala: metals has its own setup
-vim.lsp.config("metals", {
+-- Scala: metals is managed by the scalameta/nvim-metals plugin
+-- (see lua/plugins/init.lua) — do not configure it here.
+
+-- Java: jdtls (basic setup; for serious Java work consider mfussenegger/nvim-jdtls)
+vim.lsp.config("jdtls", {
   on_attach = nvlsp.on_attach,
   on_init = nvlsp.on_init,
   capabilities = nvlsp.capabilities,
   settings = {
-    metals = {
-      inlayHints = { inferredTypes = { enable = true } },
+    java = {
+      signatureHelp = { enabled = true },
+      contentProvider = { preferred = "fernflower" },
+      completion = {
+        favoriteStaticMembers = {
+          "org.junit.Assert.*",
+          "org.junit.Assume.*",
+          "org.junit.jupiter.api.Assertions.*",
+          "org.junit.jupiter.api.Assumptions.*",
+          "org.mockito.Mockito.*",
+        },
+      },
     },
   },
 })
-vim.lsp.enable("metals")
+vim.lsp.enable("jdtls")

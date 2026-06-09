@@ -60,6 +60,7 @@ return {
         api.config.mappings.default_on_attach(bufnr)
         vim.keymap.set("n", "<Tab>", preview_file, { buffer = bufnr, desc = "Preview file (float)" })
         vim.keymap.set("n", "q", close_preview, { buffer = bufnr, desc = "Close preview" })
+        vim.keymap.set("n", "+", api.tree.change_root_to_node, { buffer = bufnr, desc = "CD into dir" })
       end
 
       require("nvim-tree").setup(nvchad_opts)
@@ -84,6 +85,60 @@ return {
   -- JSON/YAML schema catalog
   { "b0o/schemastore.nvim", lazy = true },
 
+  -- Scala: nvim-metals manages the Metals LSP (install via :MetalsInstall)
+  {
+    "scalameta/nvim-metals",
+    dependencies = { "nvim-lua/plenary.nvim" },
+    ft = { "scala", "sbt", "java" },
+    opts = function()
+      local metals = require("metals")
+      local nvlsp = require("nvchad.configs.lspconfig")
+
+      local config = metals.bare_config()
+
+      config.settings = {
+        showImplicitArguments = true,
+        excludedPackages = {
+          "akka.actor.typed.javadsl",
+          "com.github.swagger.akka.javadsl",
+        },
+        inlayHints = {
+          inferredTypes = { enable = true },
+          typeParameters = { enable = true },
+          hintsInPatternMatch = { enable = true },
+        },
+        serverVersion = "latest.stable",
+      }
+
+      config.init_options.statusBarProvider = "on"
+      config.capabilities = nvlsp.capabilities
+
+      config.on_attach = function(client, bufnr)
+        nvlsp.on_attach(client, bufnr)
+        local map = function(lhs, rhs, desc)
+          vim.keymap.set("n", lhs, rhs, { buffer = bufnr, desc = desc })
+        end
+        map("<leader>mc", function() require("metals").commands() end, "Metals commands")
+        map("<leader>mh", function() require("metals").hover_worksheet() end, "Metals hover worksheet")
+        map("<leader>mi", function() require("metals").info() end, "Metals info")
+        map("<leader>mt", function() require("metals.tvp").toggle_tree_view() end, "Metals tree view")
+        map("<leader>mR", function() require("metals").restart_build_server() end, "Metals restart build server")
+      end
+
+      return config
+    end,
+    config = function(_, metals_config)
+      local group = vim.api.nvim_create_augroup("nvim-metals", { clear = true })
+      vim.api.nvim_create_autocmd("FileType", {
+        pattern = { "scala", "sbt", "java" },
+        callback = function()
+          require("metals").initialize_or_attach(metals_config)
+        end,
+        group = group,
+      })
+    end,
+  },
+
   {
     "williamboman/mason.nvim",
     opts = {},
@@ -99,6 +154,8 @@ return {
         "pyright",
         "ts_ls",
         "kotlin_language_server",
+        "jdtls",
+        -- "metals" is installed by nvim-metals (Coursier), not Mason
         "lua_ls",
         "html",
         "cssls",
@@ -319,6 +376,19 @@ return {
           },
         },
       }
+    end,
+  },
+
+  {
+    "Ramilito/kubectl.nvim",
+    version = "2.*",
+    dependencies = { "saghen/blink.download" },
+    cmd = { "Kubectl", "Kubens", "Kubectx" },
+    keys = {
+      { "<leader>k", function() require("kubectl").toggle() end, desc = "Kubectl toggle" },
+    },
+    config = function()
+      require("kubectl").setup()
     end,
   },
 }
