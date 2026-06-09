@@ -154,3 +154,7 @@ alias tailscale="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
 # Reset terminal state on HUP (SSH disconnect) to prevent escape code garbage
 TRAPHUPHUP() { stty sane 2>/dev/null; tput reset 2>/dev/null; }
 trap 'stty sane 2>/dev/null' EXIT
+
+#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
+export SDKMAN_DIR="$HOME/.sdkman"
+[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
