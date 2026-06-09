@@ -31,7 +31,7 @@ if [ -d "$DOTFILES_DIR/.config/nvim" ]; then
     mv "$HOME/.config/nvim" "$HOME/.config/nvim.bak"
     echo "  Backed up existing nvim config → nvim.bak"
   fi
-  ln -sf "$DOTFILES_DIR/.config/nvim" "$HOME/.config/nvim"
+  ln -sfn "$DOTFILES_DIR/.config/nvim" "$HOME/.config/nvim"
   echo "  Linked .config/nvim"
 fi
 
@@ -168,6 +168,12 @@ if ! command -v npm &>/dev/null; then
 fi
 
 # ── Install language servers ──
+# Install npm globals into a user-writable prefix so we don't need root
+# (avoids EACCES on /usr/lib/node_modules in Codespaces; also works with
+# Homebrew node on macOS). Exported so bin/install-lsps inherits it too.
+export NPM_CONFIG_PREFIX="$HOME/.local"
+mkdir -p "$HOME/.local/bin"
+
 # Web/IDE LSPs not covered by bin/install-lsps stay inline here.
 if command -v npm &>/dev/null; then
   echo "  Installing web/IDE LSP servers via npm..."

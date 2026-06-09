@@ -57,6 +57,14 @@ note() { echo "    $*"; }
 warn() { echo "    ⚠ $*" >&2; }
 ok()   { echo "    ✓ $*"; }
 
+# ── npm global prefix (rootless) ────────────────────────────────────────────
+# On Linux/Codespaces, install npm globals under ~/.local so we don't need root
+# (matches where cs/jdtls/kotlin land). Respect a caller-provided prefix.
+if [ $IS_LINUX -eq 1 ] && [ -z "${NPM_CONFIG_PREFIX:-}" ]; then
+  export NPM_CONFIG_PREFIX="$HOME/.local"
+  mkdir -p "$HOME/.local/bin"
+fi
+
 # ── --list mode ─────────────────────────────────────────────────────────────
 if [ "$list_only" -eq 1 ]; then
   printf "%-12s %-30s %s\n" LANG SERVER STATUS

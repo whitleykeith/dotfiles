@@ -8,3 +8,5 @@ export PATH
 # >>> coursier install directory >>>
 export PATH="$PATH:/Users/whitleykeith/Library/Application Support/Coursier/bin"
 # <<< coursier install directory <<<
+# Linux/Codespaces: coursier installs apps (metals, scalafmt) here
+[ -d "$HOME/.local/share/coursier/bin" ] && export PATH="$PATH:$HOME/.local/share/coursier/bin"

@@ -24,6 +24,7 @@ fi
 
 export XDG_CONFIG_HOME=$HOME/.config
 export PATH="$HOME/.local/bin:$HOME/.docker/bin:$PATH"
+[ -d "$HOME/.local/share/coursier/bin" ] && export PATH="$HOME/.local/share/coursier/bin:$PATH"
 export GOPROXY=${GOPROXY:-https://proxy.golang.org/,direct}
 export GOPRIVATE=
 export GONOPROXY=
