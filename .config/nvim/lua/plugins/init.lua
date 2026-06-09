@@ -20,6 +20,13 @@ return {
         ignore_dirs = { "node_modules", ".git", "__pycache__", ".venv", "target", "dist", "build" },
       }
 
+      nvchad_opts.renderer = vim.tbl_deep_extend("force", nvchad_opts.renderer or {}, {
+        group_empty = true,
+      })
+      nvchad_opts.filters = vim.tbl_deep_extend("force", nvchad_opts.filters or {}, {
+        custom = { "^.git$", "^target$", "^.bloop$", "^.metals$", "^.idea$", "^.scala-build$" },
+      })
+
       local preview_buf, preview_win
       local function close_preview()
         if preview_win and vim.api.nvim_win_is_valid(preview_win) then
