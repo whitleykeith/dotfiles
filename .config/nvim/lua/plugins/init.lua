@@ -12,6 +12,10 @@ return {
           resize_window = false,
           window_picker = { enable = true },
         },
+        change_dir = {
+          enable = true,
+          global = true,
+        },
       }
 
       nvchad_opts.filesystem_watchers = {
