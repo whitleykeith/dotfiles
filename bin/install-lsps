@@ -1,5 +1,5 @@
 #!/bin/bash
-# install-lsps — install common language servers (Scala, Python, YAML, Go, Ruby, Java, Kotlin)
+# install-lsps — install common language servers (Scala, Python, YAML, Go, Ruby, Java, Kotlin, Helm)
 #
 # Idempotent: skips anything already on PATH. OS-aware: prefers Homebrew on
 # macOS, falls back to language-native installers (coursier, npm, pip, gem,
@@ -19,10 +19,11 @@
 #   ruby    solargraph + ruby-lsp(requires gem)
 #   java    jdtls                (requires JDK)
 #   kotlin  kotlin-language-server (requires JDK)
+#   helm    helm_ls (helm-ls)    (GitHub release binary on Linux)
 
 set -e
 
-ALL_LANGS=(scala python yaml go ruby java kotlin)
+ALL_LANGS=(scala python yaml go ruby java kotlin helm)
 
 usage() { sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//' | sed '/^!/d'; }
 
@@ -85,6 +86,7 @@ if [ "$list_only" -eq 1 ]; then
   check ruby   ruby-lsp
   check java   jdtls
   check kotlin kotlin-language-server
+  check helm   helm_ls
   exit 0
 fi
 
@@ -237,6 +239,30 @@ install_kotlin() {
   rm -f "$zip"
 }
 
+install_helm() {
+  step "Helm — helm_ls (helm-ls language server)"
+  if have helm_ls; then ok "helm_ls already installed ($(command -v helm_ls))"; return 0; fi
+  if [ $IS_MAC -eq 1 ] && have brew; then brew_install helm-ls; return; fi
+  # Linux fallback: download the matching prebuilt binary from GitHub releases
+  # (mrjosh/helm-ls ships raw per-arch binaries, e.g. helm_ls_linux_amd64 —
+  # no archive, no Go toolchain required).
+  local goarch
+  case "$ARCH" in
+    x86_64|amd64)  goarch="amd64" ;;
+    aarch64|arm64) goarch="arm64" ;;
+    *) warn "unsupported arch for helm-ls: $ARCH"; return 1 ;;
+  esac
+  local asset="helm_ls_linux_${goarch}"
+  local url
+  url=$(curl -fsSL https://api.github.com/repos/mrjosh/helm-ls/releases/latest \
+        | grep -oE "\"browser_download_url\": *\"[^\"]*${asset}\"" | grep -oE 'https://[^"]+')
+  [ -z "$url" ] && { warn "could not resolve latest helm-ls release URL"; return 1; }
+  note "Downloading helm_ls to \$HOME/.local/bin/helm_ls"
+  mkdir -p "$HOME/.local/bin"
+  curl -fL "$url" -o "$HOME/.local/bin/helm_ls"
+  chmod +x "$HOME/.local/bin/helm_ls"
+}
+
 # ── Run selected ────────────────────────────────────────────────────────────
 echo "Installing language servers for: ${selected[*]}"
 echo "(OS=$OS arch=$ARCH)"
@@ -252,6 +278,7 @@ for lang in "${selected[@]}"; do
     ruby)   install_ruby   || failed+=("ruby")   ;;
     java)   install_java   || failed+=("java")   ;;
     kotlin) install_kotlin || failed+=("kotlin") ;;
+    helm)   install_helm   || failed+=("helm")   ;;
     *)      warn "unknown language: $lang"; failed+=("$lang") ;;
   esac
   echo
