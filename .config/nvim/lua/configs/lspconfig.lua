@@ -48,7 +48,11 @@ vim.lsp.config("gopls", {
 })
 
 -- YAML: with Kubernetes schema detection
+-- Explicitly scope filetypes to exclude "yaml.helm-values" (lspconfig's yamlls
+-- default includes it) so helm_ls owns Helm chart values.yaml files instead of
+-- yamlls choking on {{ }} templating with "unexpected scalar token" errors.
 vim.lsp.config("yamlls", {
+  filetypes = { "yaml", "yaml.docker-compose", "yaml.gitlab" },
   on_attach = nvlsp.on_attach,
   on_init = nvlsp.on_init,
   capabilities = nvlsp.capabilities,

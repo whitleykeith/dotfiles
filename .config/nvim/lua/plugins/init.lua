@@ -96,6 +96,12 @@ return {
   -- JSON/YAML schema catalog
   { "b0o/schemastore.nvim", lazy = true },
 
+  -- Helm: filetype detection (helm for templates/*.yaml, yaml.helm-values for
+  -- values.yaml) inside any chart dir (one containing Chart.yaml). Needed so
+  -- helm_ls (not yamlls) attaches to templates and {{ }} syntax highlights.
+  -- Loads eagerly (no lazy trigger) since ftdetect must run before buffers open.
+  { "towolf/vim-helm" },
+
   -- Scala: nvim-metals manages the Metals LSP (install via :MetalsInstall)
   {
     "scalameta/nvim-metals",
